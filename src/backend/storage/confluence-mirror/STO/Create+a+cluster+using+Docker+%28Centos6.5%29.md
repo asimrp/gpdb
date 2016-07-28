@@ -1,0 +1,134 @@
+<span id="title-text"> Storage & Access : Create a cluster using Docker (Centos6.5) </span>
+===========================================================================================
+
+This page last changed on May 21, 2014 by charis1.
+
+**Create a centos 6.5 VM from gpcloud**
+=======================================
+
+1.  Login to gpcloud <a href="https://gpcloud.greenplum.com/cloud/org/gpdb" class="uri" class="external-link">https://gpcloud.greenplum.com/cloud/org/gpdb</a>
+2.  Add a vapp
+3.  Look in ‘public catalogs’ for CentOS 6.5 (single node)
+    1.  Highlight CentOS 6.5 (single node)
+    2.  &lt;Next&gt;
+    3.  Name your vapp (or leave it to default ‘CentOS 6.5 (single node)’)
+    4.  &lt;Next&gt;
+    5.  Choose  a virtual datacenter
+    6.  &lt;finish&gt;
+    7.  The Vapp is Powered-Down
+    8.  In Right-hand panel click on your vm and go to ‘Networking’ tab
+    9.  In **Connection** column choose ‘*extorgnet\_vlan216*’
+    10. Go to ‘Virtual Machines’ tab, Now Power-up the vm
+    11. Look for external ip column to populate
+    12. Open 2 terminals to the new vm ssh root@external\_ip (passwd changeme)
+
+ 
+
+ 
+
+<span style="color: rgb(255,0,0);">***Terminal 1***</span>
+
+**Python Dependencies**
+
+ 
+
+1.  wget --no-check-certificate <a href="https://raw.github.com/pypa/pip/master/contrib/get-pip.py" class="uri" class="external-link">https://raw.github.com/pypa/pip/master/contrib/get-pip.py</a>
+2.  python get-pip.py
+3.  yum -y install gcc
+4.  yum -y install python-devel
+5.  pip install paramiko
+6.  rpm -iUvh <a href="http://dl.fedoraproject.org/pub/epel/6/x86_64/epel-release-6-8.noarch.rpm" class="uri" class="external-link">http://dl.fedoraproject.org/pub/epel/6/x86_64/epel-release-6-8.noarch.rpm</a>
+7.  yum update –y
+8.  yum -y install docker-io
+9.  sudo yum -y update docker-io
+10. /etc/init.d/docker start
+11.  docker version
+
+ 
+
+<span style="color: rgb(255,0,0);">***Terminal 2***</span>
+
+1.  sudo docker run -i -t fedora /bin/bash
+
+Now you are in docker container (see the prompt change) You can create more such shells and give command *sudo docker run -i -t fedora /bin/bash*  to make more independent docker containers.
+
+ In Terminal 1 try command *docker ps* to see a list of active docker containers.
+
+You can use these containers as  any vm and install your software.
+
+ 
+
+<span style="color: rgb(255,0,0);">***Terminal 1 (again)***</span>
+
+*docker ps  (Get the container id)*
+
+*docker inspect &lt;container id  from previous command&gt;*
+
+**Caveat**
+
+You can get the ip address of the new container from the previous command but cannot ssh to it, or from other containers.  For that you will have to setup DNS server on your centos 6.5  vm
+
+ 
+
+**Setting DNS server to overcome the previous problem**
+
+1.  Yum install git
+2.  Assuming that you already have a git account.
+3.  Set ssh keys on your server (all default values) * ssh-keygen -t rsa*
+4.  Go to <a href="https://stash.greenplum.com/plugins/servlet/ssh/account/keys" class="uri" class="external-link">https://stash.greenplum.com/plugins/servlet/ssh/account/keys</a>  and add ssh-keys  (cat the contents of  .ssh/id\_rsa.pub, and copy/paste)
+5.  Back on terminal 1: git clone <ssh://git@stash.greenplum.com:2222/~aokij1/dcloud.git>
+6.  cd dcloud
+7.  sudo python setup.py install
+8.  dcloud init
+9.  sudo python setup.py install --record installedFiles.txt
+10. pwd *&lt;/root/dcloud&gt;*
+11. dcloud create example/cluster\_from\_images.json
+
+*The above command will display*
+
+*hosts:*
+
+*172.17.0.3 dclouddns dclouddns.mydomain.com*
+
+*172.17.0.4 node1 node1.mydomain.com*
+
+*172.17.0.5 node2 node2.mydomain.com*
+
+*172.17.0.6 node3 node3.mydomain.com*
+
+<span style="color: rgb(51,153,102);">**How many Nodes are created depends on the configuration mentioned in dcloud/example/cluster\_from\_images.json file.**</span>
+
+ssh <script type="text/javascript">
+<!--
+h='&#x31;&#x37;&#50;&#46;&#x31;&#x37;&#46;&#48;&#46;&#x33;';a='&#64;';n='&#114;&#x6f;&#x6f;&#116;';e=n+a+h;
+document.write('<a h'+'ref'+'="ma'+'ilto'+':'+e+'" clas'+'s="em' + 'ail">'+e+'<\/'+'a'+'>');
+// -->
+</script><noscript>&#114;&#x6f;&#x6f;&#116;&#32;&#x61;&#116;&#32;&#x31;&#x37;&#50;&#32;&#100;&#x6f;&#116;&#32;&#x31;&#x37;&#32;&#100;&#x6f;&#116;&#32;&#48;&#32;&#100;&#x6f;&#116;&#32;&#x33;</noscript>  &lt;password changeme&gt;
+
+You can ssh from  172.17.0.4 to 172.17.0.5 . Just like any other vm cluster.
+
+ 
+
+*\*\* It can be created on RHEL 6.5 too. Some steps may differ.*
+
+Comments:
+---------
+
+<table>
+<colgroup>
+<col width="100%" />
+</colgroup>
+<tbody>
+<tr class="odd">
+<td align="left"><a href=""></a>
+<p>comprehensive doc!</p>
+<div class="smallfont" align="left" style="color: #666666; width: 98%; margin-bottom: 10px;">
+<img src="images/icons/contenttypes/comment_16.png" width="16" height="16" /> Posted by jaoki at Jun 03, 2014 18:30
+</div></td>
+</tr>
+</tbody>
+</table>
+
+Document generated by Confluence on May 17, 2016 19:14
+
+

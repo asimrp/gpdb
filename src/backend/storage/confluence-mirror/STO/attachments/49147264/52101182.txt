@@ -1,0 +1,567 @@
+- Connect to the database master and find out if the the system is in InSync or in changetracking.
+by looking at the gp_segment_configuration table
+
+- Based on if the system is in InSync or not, the system decides to execute a set of specific queries on every segment including the master
+by connecting them to utility mode. All other queries will be executed anyway. All the special queries have been tagged with (Only in InSync)
+
+- Test 1 : gp_persistent_filespace_node state check (Only in Insync)
+====================================================================
+Create a query that finds out all such entries from gp_persistent_filespace_node where
+Pers_State is NOT Free or Created     OR
+Mirror_Exst_State is NOT 'mirror free' or 'not mirrored' or 'mirror created'
+
+    # Checks on FILESPACE
+    qname = "gp_persistent_filespace_node state check"
+    qry = """
+    SELECT p.filespace_oid,
+       case when p.persistent_state = 0 then 'free'
+            when p.persistent_state = 1 then 'create pending'
+            when p.persistent_state = 2 then 'created'
+            when p.persistent_state = 3 then 'drop pending'
+            when p.persistent_state = 4 then 'abort create'
+            when p.persistent_state = 5 then 'JIT create pending'
+            when p.persistent_state = 6 then 'bulk load create pending'
+            else 'unknown state: ' || p.persistent_state
+       end as persistent_state,
+       case when p.mirror_existence_state = 0 then 'mirror free'
+             when p.mirror_existence_state = 1 then 'not mirrored'
+             when p.mirror_existence_state = 2 then 'mirror create pending'
+             when p.mirror_existence_state = 3 then 'mirror created'
+             when p.mirror_existence_state = 4 then 'mirror down before create'
+             when p.mirror_existence_state = 5 then 'mirror down during create'
+             when p.mirror_existence_state = 6 then 'mirror drop pending'
+             when p.mirror_existence_state = 7 then 'mirror only drop remains'
+             else 'unknown state: ' || p.mirror_existence_state
+        end as mirror_existence_state
+    FROM gp_persistent_filespace_node p
+    WHERE p.persistent_state not in (0, 2) 
+       or p.mirror_existence_state not in (0,1,3)
+    """
+    if in_sync:
+        queries.append([qname, qry])
+
+
+
+
+
+- Test 2 : gp_persistent_filespace_node  <=> pg_filespace
+==========================================================
+Create a query that finds out all entries from gp_persistent_filespace_node
+which have pers_state as created but are invisible in pg_filespace. 
+At the same time find all visible pg_filespace entries which do NOT have
+corrosponding 'created' gp_persistent_filespace_node entries
+
+(!) Don't care about pg_system filespace
+
+    qname = "gp_persistent_filespace_node  <=> pg_filespace"
+    qry = """
+    SELECT  coalesce(f.oid, p.filespace_oid) as filespace_oid, 
+        f.fsname as "filespace"
+    FROM (SELECT * FROM gp_persistent_filespace_node 
+          WHERE persistent_state = 2) p 
+      FULL OUTER JOIN (SELECT oid, fsname FROM pg_filespace 
+                       WHERE oid != 3052) f 
+        ON (p.filespace_oid = f.oid)
+    WHERE  (p.filespace_oid is NULL OR f.oid is NULL)
+    """
+    queries.append([qname, qry])
+
+
+
+
+- Test 3: gp_persistent_filespace_node  <=> gp_global_sequence
+===============================================================
+Create a query that finds all entries in gp_persistent_filespace_node which have
+persistent_serial_num > seq number from gp_global_sequence.
+
+    qname = "gp_persistent_filespace_node  <=> gp_global_sequence"
+    qry = """
+    SELECT  p.filespace_oid, f.fsname as "filespace", 
+        case when p.persistent_state = 0 then 'free'
+             when p.persistent_state = 1 then 'create pending'
+             when p.persistent_state = 2 then 'created'
+             when p.persistent_state = 3 then 'drop pending'
+             when p.persistent_state = 4 then 'abort create'
+             when p.persistent_state = 5 then 'JIT create pending'
+             when p.persistent_state = 6 then 'bulk load create pending'
+             else 'unknown state: ' || p.persistent_state
+        end as persistent_state,
+        p.persistent_serial_num, s.sequence_num
+    FROM    gp_global_sequence s, gp_persistent_filespace_node p
+      LEFT JOIN pg_filespace f ON (f.oid = p.filespace_oid)
+    WHERE   s.ctid = '(0,4)' and p.persistent_serial_num > s.sequence_num
+    """
+    queries.append([qname, qry])
+
+
+- Test 4:  gp_persistent_database_node state check (Only in Insync)
+===================================================================
+Create a query that finds out all such entries from gp_persistent_database_node where
+Pers_State is NOT Free or Created     OR
+Mirror_Exst_State is NOT 'mirror free' or 'not mirrored' or 'mirror created'
+
+    qname = "gp_persistent_database_node state check"
+    qry = """
+    SELECT p.tablespace_oid, p.database_oid,
+       case when p.persistent_state = 0 then 'free'
+            when p.persistent_state = 1 then 'create pending'
+            when p.persistent_state = 2 then 'created'
+            when p.persistent_state = 3 then 'drop pending'
+            when p.persistent_state = 4 then 'abort create'
+            when p.persistent_state = 5 then 'JIT create pending'
+            when p.persistent_state = 6 then 'bulk load create pending'
+            else 'unknown state: ' || p.persistent_state
+       end as persistent_state,
+       case when p.mirror_existence_state = 0 then 'mirror free'
+             when p.mirror_existence_state = 1 then 'not mirrored'
+             when p.mirror_existence_state = 2 then 'mirror create pending'
+             when p.mirror_existence_state = 3 then 'mirror created'
+             when p.mirror_existence_state = 4 then 'mirror down before create'
+             when p.mirror_existence_state = 5 then 'mirror down during create'
+             when p.mirror_existence_state = 6 then 'mirror drop pending'
+             when p.mirror_existence_state = 7 then 'mirror only drop remains'
+             else 'unknown state: ' || p.mirror_existence_state
+        end as mirror_existence_state
+    FROM gp_persistent_database_node p
+    WHERE p.persistent_state not in (0, 2) 
+       or p.mirror_existence_state not in (0,1,3)
+    """
+    if in_sync:
+        queries.append([qname, qry])
+
+
+
+- Test 5 : gp_persistent_database_node  <=> pg_database
+========================================================
+Create a query that finds out all entries from gp_persistent_database_node
+which have pers_state as created but are invisible in pg_database. 
+At the same time find all visible pg_database entries which do NOT have
+corrosponding 'created' gp_persistent_database_node entries
+
+
+    qname = "gp_persistent_database_node   <=> pg_database"
+    qry = """
+    SELECT coalesce(d.oid, p.database_oid) as database_oid,
+       d.datname as database
+    FROM (SELECT * FROM gp_persistent_database_node 
+          WHERE persistent_state = 2) p
+      FULL OUTER JOIN pg_database d 
+        ON (d.oid = p.database_oid)
+    WHERE (d.datname is null or p.database_oid is null)
+    """
+    queries.append([qname, qry])
+
+
+- Test 6 : gp_persistent_database_node <=> pg_tablespace
+=========================================================
+
+Create a query that finds all entries from gp_persistent_database_node which have
+persistent state as 'created' and table space oid which is not visible in
+pg_tablespace.
+
+    qname = "gp_persistent_database_node   <=> pg_tablespace"
+    qry = """
+    SELECT  coalesce(t.oid, p.database_oid) as database_oid, 
+        t.spcname as tablespace
+    FROM (SELECT * FROM gp_persistent_database_node 
+          WHERE persistent_state = 2) p
+      LEFT OUTER JOIN (SELECT oid, spcname FROM pg_tablespace 
+                       WHERE oid != 1664) t
+        ON (t.oid = p.tablespace_oid)
+    WHERE  t.spcname is null
+    """
+    queries.append([qname, qry])
+
+
+- Test 7: gp_persistent_database_node  <=> gp_global_sequence
+===============================================================
+
+Create a query that finds all entries in gp_persistent_database_node which have
+persistent_serial_num > seq number from gp_global_sequence.
+
+    qname = "gp_persistent_database_node   <=> gp_global_sequence"
+    qry = """
+    SELECT  p.database_oid, p.tablespace_oid, d.datname as "database",
+        case when p.persistent_state = 0 then 'free'
+             when p.persistent_state = 1 then 'create pending'
+             when p.persistent_state = 2 then 'created'
+             when p.persistent_state = 3 then 'drop pending'
+             when p.persistent_state = 4 then 'abort create'
+             when p.persistent_state = 5 then 'JIT create pending'
+             when p.persistent_state = 6 then 'bulk load create pending'
+             else 'unknown state: ' || p.persistent_state
+        end as persistent_state,
+        p.persistent_serial_num, s.sequence_num
+    FROM    gp_global_sequence s, gp_persistent_database_node p
+      LEFT JOIN pg_database d ON (d.oid = p.database_oid)
+    WHERE   s.ctid = '(0,2)' and p.persistent_serial_num > s.sequence_num
+    """
+    queries.append([qname, qry])
+
+
+- Test 8:  gp_persistent_tablespace_node state check (Only in Insync)
+=====================================================================
+
+Create a query that finds out all such entries from gp_persistent_tablespace_node where
+Pers_State is NOT Free or Created     OR
+Mirror_Exst_State is NOT 'mirror free' or 'not mirrored' or 'mirror created'
+
+    qname = "gp_persistent_tablespace_node state check"
+    qry = """
+    SELECT p.filespace_oid, p.tablespace_oid,
+       case when p.persistent_state = 0 then 'free'
+            when p.persistent_state = 1 then 'create pending'
+            when p.persistent_state = 2 then 'created'
+            when p.persistent_state = 3 then 'drop pending'
+            when p.persistent_state = 4 then 'abort create'
+            when p.persistent_state = 5 then 'JIT create pending'
+            when p.persistent_state = 6 then 'bulk load create pending'
+            else 'unknown state: ' || p.persistent_state
+       end as persistent_state,
+       case when p.mirror_existence_state = 0 then 'mirror free'
+             when p.mirror_existence_state = 1 then 'not mirrored'
+             when p.mirror_existence_state = 2 then 'mirror create pending'
+             when p.mirror_existence_state = 3 then 'mirror created'
+             when p.mirror_existence_state = 4 then 'mirror down before create'
+             when p.mirror_existence_state = 5 then 'mirror down during create'
+             when p.mirror_existence_state = 6 then 'mirror drop pending'
+             when p.mirror_existence_state = 7 then 'mirror only drop remains'
+             else 'unknown state: ' || p.mirror_existence_state
+        end as mirror_existence_state
+    FROM gp_persistent_tablespace_node p
+    WHERE p.persistent_state not in (0, 2) 
+       or p.mirror_existence_state not in (0,1,3)
+    """
+    if in_sync:
+        queries.append([qname, qry])
+
+- Test 9 : gp_persistent_tablespace_node  <=> pg_tablespace
+=====================================================================
+
+Create a query that finds out all entries from gp_persistent_tablespace_node
+which have pers_state as created but are invisible in pg_tablespace. 
+At the same time find all visible pg_tablespace entries which do NOT have
+corrosponding 'created' gp_persistent_tablespace_node entries
+
+(!) Don't care about tablspace_oid 1663,1664
+
+   qname = "gp_persistent_tablespace_node <=> pg_tablespace"
+    qry = """
+    SELECT  coalesce(t.oid, p.tablespace_oid) as tablespace_oid, 
+        t.spcname as tablespace
+    FROM (SELECT * FROM gp_persistent_tablespace_node 
+          WHERE persistent_state = 2) p 
+      FULL OUTER JOIN (
+        SELECT oid, spcname FROM pg_tablespace WHERE oid not in (1663, 1664)
+      ) t ON (t.oid = p.tablespace_oid)
+    WHERE  t.spcname is null or p.tablespace_oid is null
+    """
+    queries.append([qname, qry])
+
+
+- Test 10 : gp_persistent_tablespace_node <=> pg_filespace
+=====================================================================
+
+Create a query that finds all entries from gp_persistent_tablespace_node which have
+persistent state as 'created' and filespace_oid which is not visible in
+pg_filespace.
+
+   qname = "gp_persistent_tablespace_node <=> pg_filespace"
+    qry = """
+    SELECT  p.filespace_oid, f.fsname as "filespace"
+    FROM (SELECT * FROM gp_persistent_tablespace_node 
+          WHERE persistent_state = 2) p
+      LEFT OUTER JOIN pg_filespace f 
+        ON (f.oid = p.filespace_oid)
+    WHERE  f.fsname is null
+    """
+    queries.append([qname, qry])
+
+
+- Test 11 : gp_persistent_tablespace_node  <=> gp_global_sequence
+=====================================================================
+
+Create a query that finds all entries in gp_persistent_tablespace_node which have
+persistent_serial_num > seq number from gp_global_sequence.
+
+    qname = "gp_persistent_tablespace_node <=> gp_global_sequence"
+    qry = """
+    SELECT  p.filespace_oid, p.tablespace_oid, t.spcname as "tablespace",
+        case when p.persistent_state = 0 then 'free'
+             when p.persistent_state = 1 then 'create pending'
+             when p.persistent_state = 2 then 'created'
+             when p.persistent_state = 3 then 'drop pending'
+             when p.persistent_state = 4 then 'abort create'
+             when p.persistent_state = 5 then 'JIT create pending'
+             when p.persistent_state = 6 then 'bulk load create pending'
+             else 'unknown state: ' || p.persistent_state
+        end as persistent_state,
+        p.persistent_serial_num, s.sequence_num
+    FROM    gp_global_sequence s, gp_persistent_tablespace_node p
+      LEFT JOIN pg_tablespace t ON (t.oid = p.tablespace_oid)
+    WHERE   s.ctid = '(0,3)' and p.persistent_serial_num > s.sequence_num
+    """
+    queries.append([qname, qry])
+
+
+
+- Test 12 : gp_persistent_relation_node state check (Only in InSync)
+=====================================================================
+
+Create a query that finds out all such entries from gp_persistent_relation_node where
+Pers_State is NOT Free or Created     OR
+Mirror_Exst_State is NOT 'mirror free' or 'not mirrored' or 'mirror created'
+
+  qname = "gp_persistent_relation_node state check"
+    qry = """
+    SELECT p.tablespace_oid, p.relfilenode_oid, p.segment_file_num,
+       case when p.persistent_state = 0 then 'free'
+            when p.persistent_state = 1 then 'create pending'
+            when p.persistent_state = 2 then 'created'
+            when p.persistent_state = 3 then 'drop pending'
+            when p.persistent_state = 4 then 'abort create'
+            when p.persistent_state = 5 then 'JIT create pending'
+            when p.persistent_state = 6 then 'bulk load create pending'
+            else 'unknown state: ' || p.persistent_state
+       end as persistent_state,
+       case when p.mirror_existence_state = 0 then 'mirror free'
+             when p.mirror_existence_state = 1 then 'not mirrored'
+             when p.mirror_existence_state = 2 then 'mirror create pending'
+             when p.mirror_existence_state = 3 then 'mirror created'
+             when p.mirror_existence_state = 4 then 'mirror down before create'
+             when p.mirror_existence_state = 5 then 'mirror down during create'
+             when p.mirror_existence_state = 6 then 'mirror drop pending'
+             when p.mirror_existence_state = 7 then 'mirror only drop remains'
+             else 'unknown state: ' || p.mirror_existence_state
+        end as mirror_existence_state
+    FROM gp_persistent_relation_node p
+    WHERE (p.persistent_state not in (0, 2) 
+           or p.mirror_existence_state not in (0,1,3))
+      and p.database_oid in (
+        SELECT oid FROM pg_database WHERE datname = current_database()
+      )
+    """
+    if in_sync:
+        queries.append([qname, qry])
+
+
+- Test 13 : gp_persistent_relation_node   <=> pg_tablespace
+=====================================================================
+
+Create a query that finds all entries (for current database) from gp_persistent_relation_node
+which have persistent_state as created but their tablspace_oid is not visible in pg_tablespace.
+
+   qname = "gp_persistent_relation_node   <=> pg_tablespace"
+    qry = """
+    SELECT  distinct p.tablespace_oid
+    FROM (SELECT * FROM gp_persistent_relation_node 
+          WHERE persistent_state = 2 
+            AND database_oid in (
+              SELECT oid FROM pg_database 
+              WHERE datname = current_database()
+              UNION ALL
+              SELECT 0)) p
+      LEFT OUTER JOIN pg_tablespace t 
+        ON (t.oid = p.tablespace_oid)
+    WHERE  t.oid is null
+    """
+    queries.append([qname, qry])
+
+
+
+- Test 14 : gp_persistent_relation_node <=> pg_database
+=====================================================================
+
+Create a listof all tuples from gp_persistent_relation_node where database_oid is non-zero
+and the pers_state is created. (A)
+
+Create a list of all the tuples from pg_database (B)
+
+Using A and B, find all such entries which are in both or just in one list. (C)
+
+Using this list C, display only those entries which are either in A or B or 
+the count of the (database name and oid) combination is < 100
+
+    qname = "gp_persistent_relation_node   <=> pg_database"
+    qry = """
+    SELECT  datname, oid, count(*)
+    FROM (
+      SELECT  d.datname as datname, p.database_oid as oid
+      FROM (SELECT * FROM gp_persistent_relation_node 
+            WHERE database_oid != 0 and persistent_state = 2
+           ) p
+        full outer join pg_database d ON (d.oid = p.database_oid)
+    ) x
+    GROUP BY 1,2
+    HAVING  datname is null or oid is null or count(*) < 100
+    """
+    queries.append([qname, qry])
+
+    qname = "gp_persistent_relation_node   <=> gp_relation_node"
+    qry = """
+    SELECT  coalesce(p.relfilenode_oid, r.relfilenode_oid) as relfilenode,
+        p.ctid, r.persistent_tid
+    FROM  (
+      SELECT p.ctid, p.* FROM gp_persistent_relation_node p
+      WHERE persistent_state = 2 AND p.database_oid in (
+        SELECT oid FROM pg_database WHERE datname = current_database()
+        UNION ALL
+        SELECT 0
+        )
+      ) p
+      FULL OUTER JOIN gp_relation_node r
+        ON (p.relfilenode_oid = r.relfilenode_oid and
+            p.segment_file_num = r.segment_file_num)
+    WHERE  (p.relfilenode_oid is NULL OR 
+            r.relfilenode_oid is NULL OR 
+            p.ctid != r.persistent_tid)
+    """
+    queries.append([qname, qry])
+
+
+ 
+ - Test 15: gp_persistent_relation_node   <=> gp_relation_node
+ =====================================================================
+
+ Create a query that finds all the entries from gp_persistent_relation_node that have
+ pers_state as 'created' and has current database oid but is not is not present in
+ gp_relation_node OR if present in both their TIDs don't match.
+ At the same time find all such entries present in gp_relation_node but not in the list
+ of 'created' gp_persistent_relation_node entries OR if present in the 'created' list
+ of  gp_persistent_relation_node then their TIDs don't match.
+
+   qname = "gp_persistent_relation_node   <=> pg_class"
+    qry = """
+    SELECT  coalesce(p.relfilenode_oid, c.relfilenode) as relfilenode,
+        c.nspname, c.relname, c.relkind, c.relstorage
+    FROM (
+      SELECT * FROM gp_persistent_relation_node
+      WHERE persistent_state = 2 AND database_oid in (
+        SELECT oid FROM pg_database WHERE datname = current_database()
+        UNION ALL
+        SELECT 0
+        )
+      ) p
+      FULL OUTER JOIN (
+        SELECT  n.nspname, c.relname, c.relfilenode, c.relstorage, c.relkind
+        FROM  pg_class c 
+          LEFT OUTER JOIN pg_namespace n ON (c.relnamespace = n.oid)
+        WHERE  c.relstorage not in ('v', 'x', 'f')
+      ) c ON (p.relfilenode_oid = c.relfilenode)
+    WHERE  p.relfilenode_oid is NULL OR c.relfilenode is NULL
+    """
+    queries.append([qname, qry])
+
+    qname = "gp_persistent_relation_node   <=> gp_global_sequence"
+    qry = """
+    SELECT  p.tablespace_oid, p.database_oid, p.relfilenode_oid,
+        p.segment_file_num, 
+        case when p.persistent_state = 0 then 'free'
+             when p.persistent_state = 1 then 'create pending'
+             when p.persistent_state = 2 then 'created'
+             when p.persistent_state = 3 then 'drop pending'
+             when p.persistent_state = 4 then 'abort create'
+             when p.persistent_state = 5 then 'JIT create pending'
+             when p.persistent_state = 6 then 'bulk load create pending'
+             else 'unknown state: ' || p.persistent_state
+        end as persistent_state,
+        p.persistent_serial_num, s.sequence_num
+    FROM    gp_global_sequence s, gp_persistent_relation_node p
+      LEFT JOIN pg_tablespace t ON (t.oid = p.tablespace_oid)
+    WHERE   s.ctid = '(0,1)' and p.persistent_serial_num > s.sequence_num
+    """
+    queries.append([qname, qry])
+
+
+- Test 16: gp_persistent_relation_node <=> pg_class
+=====================================================================
+
+Create a list of all tuples visible in pg_class except the ones which have
+virtual or external or foreign relstorage (Refer pg_class.h for relstorage types)
+
+Create a list of entries from gp_persistent_relation_node for current database and 
+which have pers_state as 'created'
+
+Using above 2 lists, find all such entries which are in one list but not the other.
+
+- Test 17: gp_persistent_relation_node <=> gp_global_sequence
+=====================================================================
+
+Create a list of all the entries in  gp_persistent_relation_node.
+Create a list of all the entries in pg_tablespace.
+Find all such entries using above 2 lists such that, the fisrt list entry tablespace_oid
+may or may not be present in the second list AND first list entry persistent_serial_num is
+greater than corrosponding seq number in gp_global_sequence
+
+- Test 18: gp_persistent_relation_node <=> filesystem
+=====================================================================
+
+Create a list of all the entries in gp_persistent_relation_node (A)
+Create a list from function gp_persistent_relation_node_check() (B)
+Create a list of entries from pg_class (C)
+
+Using list B and C, find all such entries from B that may or may not match with
+C based on relfilenode but have segment number either 0 or the relstorage is not heap.
+Lets call this list D.
+
+Using list A and D, find all such entries from A that may or may not match with D based on
+tablespace_oid and database_oid and relfilenode and seg_file_num but at the same time have
+persistent_state as created and relfilenode from list D null (Meaning you did not find that
+relfilenode on the fs)
+
+Apply the same rule other way around.
+
+(!) gp_persistent_relation_node_check()
+Reads the physical filesystem for every defined filespace and returns the
+list of relfilenodes that actually exist.
+
+
+    qname = "gp_persistent_relation_node   <=> filesystem"
+    qry = """
+    SELECT coalesce(a.tablespace_oid, b.tablespace_oid) as tablespace_oid,
+       coalesce(a.database_oid, b.database_oid) as database_oid,
+       coalesce(a.relfilenode_oid, b.relfilenode_oid) as relfilenode_oid,
+       coalesce(a.segment_file_num, b.segment_file_num) as segment_file_num,
+       a.relfilenode_oid is null as filesystem,
+       b.relfilenode_oid is null as persistent,
+       b.relkind, b.relstorage
+    FROM   gp_persistent_relation_node a
+    FULL OUTER JOIN (
+      SELECT p.*, c.relkind, c.relstorage
+      FROM   gp_persistent_relation_node_check() p
+        LEFT OUTER JOIN pg_class c 
+          ON (p.relfilenode_oid = c.relfilenode)
+      WHERE (p.segment_file_num = 0 or c.relstorage != 'h')
+    ) b ON (a.tablespace_oid   = b.tablespace_oid    and
+            a.database_oid     = b.database_oid      and
+            a.relfilenode_oid  = b.relfilenode_oid   and
+            a.segment_file_num = b.segment_file_num)
+    WHERE (a.relfilenode_oid is null OR 
+	   (a.persistent_state = 2 and b.relfilenode_oid is null))  and
+      coalesce(a.database_oid, b.database_oid) in (
+        SELECT oid FROM pg_database WHERE datname = current_database()
+        UNION ALL
+        SELECT 0
+      );
+    """
+    queries.append([qname, qry])
+
+
+
+- Test 19: pg_database <=> filesystem
+======================================
+Look for databases in the filesystem that have been dropped but still have dangling files.
+This test also makes use of  gp_persistent_relation_node_check() function.
+
+
+     qname = "pg_database <=> filesystem"
+    qry = """
+    SELECT tablespace_oid, database_oid, count(*)
+    FROM   gp_persistent_relation_node_check() p 
+      LEFT OUTER JOIN pg_database d 
+      ON (p.database_oid = d.oid) 
+    WHERE  d.oid is null and database_oid != 0
+    GROUP BY tablespace_oid, database_oid;
+    """
+    queries.append([qname, qry])
+
