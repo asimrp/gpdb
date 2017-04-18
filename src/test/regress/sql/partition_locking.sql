@@ -66,15 +66,21 @@ begin;
 create table partlockt (i int, t text) partition by range(i)
 (start(1) end(10) every(1));
 
-select * from locktest_master where coalesce not like 'gp_%' and coalesce not like 'pg_%';
-select * from locktest_segments where coalesce not like 'gp_%' and coalesce not like 'pg_%';
+select * from locktest_master;
+select * from locktest_segments;
+-- start_ignore
+select * from pg_locks;
+-- end_ignore
 commit;
 
 -- drop
 begin;
 drop table partlockt;
-select * from locktest_master where coalesce not like 'gp_%' and coalesce not like 'pg_%';
-select * from locktest_segments where coalesce not like 'gp_%' and coalesce not like 'pg_%';
+select * from locktest_master;
+select * from locktest_segments;
+-- start_ignore
+select * from pg_locks;
+-- end_ignore
 commit;
 
 -- AO table (ao segments, block directory won't exist after create)
@@ -84,8 +90,11 @@ create table partlockt (i int, t text, n numeric)
 with (appendonly = true)
 partition by list(i)
 (values(1), values(2), values(3));
-select * from locktest_master where coalesce not like 'gp_%' and coalesce not like 'pg_%';
-select * from locktest_segments where coalesce not like 'gp_%' and coalesce not like 'pg_%';
+select * from locktest_master;
+select * from locktest_segments;
+-- start_ignore
+select * from pg_locks;
+-- end_ignore
 commit;
 begin;
 
@@ -95,15 +104,21 @@ insert into partlockt values(1), (2), (3);
 insert into partlockt values(1), (2), (3);
 insert into partlockt values(1), (2), (3);
 insert into partlockt values(1), (2), (3);
-select * from locktest_master where coalesce not like 'gp_%' and coalesce not like 'pg_%';
-select * from locktest_segments where coalesce not like 'gp_%' and coalesce not like 'pg_%';
+select * from locktest_master;
+select * from locktest_segments;
+-- start_ignore
+select * from pg_locks;
+-- end_ignore
 commit;
 
 -- drop
 begin;
 drop table partlockt;
-select * from locktest_master where coalesce not like 'gp_%' and coalesce not like 'pg_%';
-select * from locktest_segments where coalesce not like 'gp_%' and coalesce not like 'pg_%';
+select * from locktest_master;
+select * from locktest_segments;
+-- start_ignore
+select * from pg_locks;
+-- end_ignore
 commit;
 
 -- Indexing
@@ -112,8 +127,11 @@ create table partlockt (i int, t text) partition by range(i)
 
 begin;
 create index partlockt_idx on partlockt(i);
-select * from locktest_master where coalesce not like 'gp_%' and coalesce not like 'pg_%';
-select * from locktest_segments where coalesce not like 'gp_%' and coalesce not like 'pg_%';
+select * from locktest_master;
+select * from locktest_segments;
+-- start_ignore
+select * from pg_locks;
+-- end_ignore
 commit;
 
 -- Force use of the index in the select and delete below. We're not interested
@@ -126,28 +144,40 @@ set enable_seqscan=off;
 begin;
 select * from partlockt where i = 1;
 -- Known_opt_diff: MPP-20936
-select * from locktest_master where coalesce not like 'gp_%' and coalesce not like 'pg_%';
-select * from locktest_segments where coalesce not like 'gp_%' and coalesce not like 'pg_%';
+select * from locktest_master;
+select * from locktest_segments;
+-- start_ignore
+select * from pg_locks;
+-- end_ignore
 commit;
 
 begin;
 -- insert locking
 insert into partlockt values(3, 'f');
-select * from locktest_master where coalesce not like 'gp_%' and coalesce not like 'pg_%';
-select * from locktest_segments where coalesce not like 'gp_%' and coalesce not like 'pg_%';
+select * from locktest_master;
+select * from locktest_segments;
+-- start_ignore
+select * from pg_locks;
+-- end_ignore
 commit;
 
 -- delete locking
 begin;
 delete from partlockt where i = 4;
 -- Known_opt_diff: MPP-20936
-select * from locktest_master where coalesce not like 'gp_%' and coalesce not like 'pg_%';
-select * from locktest_segments where coalesce not like 'gp_%' and coalesce not like 'pg_%';
+select * from locktest_master;
+select * from locktest_segments;
+-- start_ignore
+select * from pg_locks;
+-- end_ignore
 commit;
 
 -- drop index
 begin;
 drop table partlockt;
-select * from locktest_master where coalesce not like 'gp_%' and coalesce not like 'pg_%';
-select * from locktest_segments where coalesce not like 'gp_%' and coalesce not like 'pg_%';
+select * from locktest_master;
+select * from locktest_segments;
+-- start_ignore
+select * from pg_locks;
+-- end_ignore
 commit;
