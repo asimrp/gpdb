@@ -37,6 +37,7 @@
 
 #include "miscadmin.h"
 #include "pg_trace.h"
+#include "access/itup.h"
 #include "postmaster/bgwriter.h"
 #include "storage/buf_internals.h"
 #include "storage/bufpage.h"
@@ -172,6 +173,57 @@ static inline bool ConditionalAcquireContentLock( volatile BufferDesc *buf, LWLo
 }
 
 /*
+ * Iterate through lineitem array and perform basic validations on tuple header
+ * fields.  Page header fields are already validated by PageHeaderIsValid().
+ * This validation cannot be performed in PageHeaderIsValid() because we need
+ * to know if the buffer belongs to an index or a heap table.
+ *
+ * Return 0 if all items valid, otherwise return the index of the invalid item
+ * in lineitem array.
+ */
+static int
+ValidatePageItems(Relation relation, Buffer buf)
+{
+	int 			i;
+	ItemId			itemId;
+	HeapTupleHeader htup;
+	IndexTuple		itup;
+	bool			itemsValid = true;
+	Page			page = BufferGetPage(buf);
+
+	for (i = 1; i <= PageGetMaxOffsetNumber(page) && itemsValid; i++)
+	{
+		itemId = PageGetItemId(page, i);
+		if (ItemIdIsRedirected(itemId) || !ItemIdIsUsed(itemId) ||
+			ItemIdIsDead(itemId))
+			itemsValid = (ItemIdGetLength(itemId) == 0);
+		else
+		{
+			itemsValid = (ItemIdGetLength(itemId) + ItemIdGetOffset(itemId) >
+						  ((PageHeader) page)->pd_special);
+			if (relation &&
+				RelationGetForm(relation)->relkind == RELKIND_INDEX)
+			{
+				itup = (IndexTuple) PageGetItem(page, itemId);
+				itemsValid &= (IndexTupleSize(itup) == ItemIdGetLength(itemId));
+			}
+			else if (relation &&
+					 RelationGetForm(relation)->relkind == RELKIND_RELATION)
+			{
+				htup = (HeapTupleHeader) PageGetItem(page, itemId);
+				itemsValid &=
+					(htup->t_hoff ==
+					 (offsetof(HeapTupleHeaderData, t_bits) +
+					  htup->t_infomask & HEAP_HASNULL ?
+					  BITMAPLEN(HeapTupleHeaderGetNatts(htup)) : 0 +
+					  htup->t_infomask & HEAP_HASOID ? sizeof(Oid) : 0));
+			}
+		}
+	}
+	return itemsValid ? 0 : i;
+}
+
+/*
  * ReadBuffer -- a shorthand for ReadBuffer_Ex 
  */
 
@@ -197,7 +249,15 @@ ReadBuffer(Relation reln, BlockNumber blockNum)
 
 	if (isHit)
 		pgstat_count_buffer_hit(reln);
-
+	else if (IsNormalProcessingMode() && gp_validate_page_items)
+	{
+		int item = ValidatePageItems(reln, returnBuffer);
+		if (item > 0)
+			elog(ERROR, "Page %d contains invalid item at index %d,"
+				 " relation %d/%d/%d", blockNum, item,
+				 reln->rd_node.spcNode, reln->rd_node.dbNode,
+				 reln->rd_node.relNode);
+	}
 	return returnBuffer;
 }
 
@@ -209,13 +269,22 @@ ReadBuffer_Resync(SMgrRelation reln, BlockNumber blockNum)
 {
 	bool		isHit;
 
-	return ReadBuffer_common(reln,
+	Buffer returnBuffer = ReadBuffer_common(reln,
 							 false, /* isLocalBuf */
 							 false, /* isTemp */
 							 blockNum,
 							 false, /* zeroPage */
 							 NULL,	/* strategy */
 							 &isHit);
+	if (!isHit && gp_validate_page_items && IsNormalProcessingMode())
+	{
+		int item = ValidatePageItems(NULL, returnBuffer);
+		if (item > 0)
+			elog(ERROR, "page %d contains invalid item at index %d,"
+				 " relation %d/%d/%d", blockNum, item,
+				 reln->smgr_rnode.spcNode, reln->smgr_rnode.dbNode,
+				 reln->smgr_rnode.relNode);
+	}
 }
 
 /*
@@ -943,6 +1012,15 @@ ReadBufferWithStrategy(Relation reln, BlockNumber blockNum,
 
 	if (isHit)
 		pgstat_count_buffer_hit(reln);
+	else if (IsNormalProcessingMode() && gp_validate_page_items)
+	{
+		int item = ValidatePageItems(reln, returnBuffer);
+		if (item > 0)
+			elog(ERROR, "Page %d contains invalid item at index %d,"
+				 " relation %d/%d/%d", blockNum, item,
+				 reln->rd_node.spcNode, reln->rd_node.dbNode,
+				 reln->rd_node.relNode);
+	}
 
 	return returnBuffer;
 }

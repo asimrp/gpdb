@@ -245,6 +245,7 @@ bool		gp_startup_integrity_checks = true;
 bool		gp_change_tracking = true;
 bool		gp_persistent_repair_global_sequence = false;
 bool		gp_validate_pt_info_relcache = false;
+bool		gp_validate_page_items = false;
 bool		Debug_print_xlog_relation_change_info = false;
 bool		Debug_print_xlog_relation_change_info_skip_issues_only = false;
 bool		Debug_print_xlog_relation_change_info_backtrace_skip_issues = false;
@@ -2072,6 +2073,16 @@ struct config_bool ConfigureNamesBool_gp[] =
 			GUC_SUPERUSER_ONLY | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_validate_pt_info_relcache,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_validate_page_items", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Validate items on a heap page when it's read from disk."),
+			NULL,
+			GUC_SUPERUSER_ONLY | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_validate_page_items,
 		false, NULL, NULL
 	},
 
