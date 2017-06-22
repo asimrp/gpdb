@@ -182,9 +182,10 @@ static inline bool ConditionalAcquireContentLock( volatile BufferDesc *buf, LWLo
  * in lineitem array.
  */
 static int
-ValidatePageItems(Relation relation, Buffer buf)
+ValidatePageItems(Relation relation, Buffer buf, BlockNumber blkno)
 {
 	int 			i;
+	uint16			natts;
 	ItemId			itemId;
 	HeapTupleHeader htup;
 	IndexTuple		itup;
@@ -194,33 +195,49 @@ ValidatePageItems(Relation relation, Buffer buf)
 	for (i = 1; i <= PageGetMaxOffsetNumber(page) && itemsValid; i++)
 	{
 		itemId = PageGetItemId(page, i);
-		if (ItemIdIsRedirected(itemId) || !ItemIdIsUsed(itemId) ||
-			ItemIdIsDead(itemId))
-			itemsValid = (ItemIdGetLength(itemId) == 0);
-		else
+		itemsValid = (ItemIdGetLength(itemId) + ItemIdGetOffset(itemId) <=
+					  ((PageHeader) page)->pd_special);
+		if (!itemsValid)
+			elog(LOG, "invalid item length, index %d", i);
+		if (relation && blkno > 0 &&
+			RelationGetForm(relation)->relkind == RELKIND_INDEX)
 		{
-			itemsValid = (ItemIdGetLength(itemId) + ItemIdGetOffset(itemId) >
-						  ((PageHeader) page)->pd_special);
-			if (relation &&
-				RelationGetForm(relation)->relkind == RELKIND_INDEX)
-			{
-				itup = (IndexTuple) PageGetItem(page, itemId);
-				itemsValid &= (IndexTupleSize(itup) == ItemIdGetLength(itemId));
-			}
-			else if (relation &&
-					 RelationGetForm(relation)->relkind == RELKIND_RELATION)
+			itup = (IndexTuple) PageGetItem(page, itemId);
+			itemsValid &= (IndexTupleSize(itup) == ItemIdGetLength(itemId));
+			if (!itemsValid)
+				elog(LOG, "invalid index tuple length, item %d", i);
+		}
+		else if (relation &&
+				 RelationGetForm(relation)->relkind == RELKIND_RELATION)
+		{
+			if (ItemIdIsNormal(itemId))
 			{
 				htup = (HeapTupleHeader) PageGetItem(page, itemId);
+				/* Items on a block must have the same number of attributes. */
+				if (i == 1)
+					natts = HeapTupleHeaderGetNatts(htup);
+				else
+					itemsValid &= (natts == HeapTupleHeaderGetNatts(htup));
+				/*
+				 * Validate tuple header - compute offset to the beginning
+				 * of tuple data, this should match t_hoff.
+				 */
 				itemsValid &=
 					(htup->t_hoff ==
 					 (offsetof(HeapTupleHeaderData, t_bits) +
 					  htup->t_infomask & HEAP_HASNULL ?
-					  BITMAPLEN(HeapTupleHeaderGetNatts(htup)) : 0 +
+					  BITMAPLEN(HeapTupleHeaderGetNatts(htup)) : 1 +
 					  htup->t_infomask & HEAP_HASOID ? sizeof(Oid) : 0));
 			}
+			else
+				itemsValid &= (ItemIdGetLength(itemId) == 0);
+			if (!itemsValid)
+				elog(LOG, "invalid heap tuple header, item %d"
+					 "htup->t_hoff=%d, htup->t_infomask=%d", i, htup->t_hoff,
+					 htup->t_infomask);
 		}
 	}
-	return itemsValid ? 0 : i;
+	return itemsValid ? 0 : i-1;
 }
 
 /*
@@ -251,7 +268,7 @@ ReadBuffer(Relation reln, BlockNumber blockNum)
 		pgstat_count_buffer_hit(reln);
 	else if (IsNormalProcessingMode() && gp_validate_page_items)
 	{
-		int item = ValidatePageItems(reln, returnBuffer);
+		int item = ValidatePageItems(reln, returnBuffer, blockNum);
 		if (item > 0)
 			elog(ERROR, "Page %d contains invalid item at index %d,"
 				 " relation %d/%d/%d", blockNum, item,
@@ -276,15 +293,18 @@ ReadBuffer_Resync(SMgrRelation reln, BlockNumber blockNum)
 							 false, /* zeroPage */
 							 NULL,	/* strategy */
 							 &isHit);
+
 	if (!isHit && gp_validate_page_items && IsNormalProcessingMode())
 	{
-		int item = ValidatePageItems(NULL, returnBuffer);
+		int item = ValidatePageItems(NULL, returnBuffer, blockNum);
 		if (item > 0)
 			elog(ERROR, "page %d contains invalid item at index %d,"
 				 " relation %d/%d/%d", blockNum, item,
 				 reln->smgr_rnode.spcNode, reln->smgr_rnode.dbNode,
 				 reln->smgr_rnode.relNode);
 	}
+
+	return returnBuffer;
 }
 
 /*
@@ -1014,7 +1034,7 @@ ReadBufferWithStrategy(Relation reln, BlockNumber blockNum,
 		pgstat_count_buffer_hit(reln);
 	else if (IsNormalProcessingMode() && gp_validate_page_items)
 	{
-		int item = ValidatePageItems(reln, returnBuffer);
+		int item = ValidatePageItems(reln, returnBuffer, blockNum);
 		if (item > 0)
 			elog(ERROR, "Page %d contains invalid item at index %d,"
 				 " relation %d/%d/%d", blockNum, item,
