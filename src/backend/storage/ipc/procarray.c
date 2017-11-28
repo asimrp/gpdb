@@ -859,6 +859,7 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, cha
 	SharedLocalSnapshotSlot->snapshot.xmin = snapshot->xmin;
 	SharedLocalSnapshotSlot->snapshot.xmax = snapshot->xmax;
 	SharedLocalSnapshotSlot->snapshot.xcnt = snapshot->xcnt;
+	SharedLocalSnapshotSlot->snapshot.subxcnt = snapshot->subxcnt;
 
 	if (snapshot->xcnt > 0)
 	{
@@ -870,7 +871,17 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, cha
 
 		memcpy(SharedLocalSnapshotSlot->snapshot.xip, snapshot->xip, snapshot->xcnt * sizeof(TransactionId));
 	}
-	
+
+	if (snapshot->subxcnt > 0)
+	{
+		Assert(snapshot->subxip != NULL);
+		ereport(Debug_print_full_dtm ? LOG : DEBUG5,
+				(errmsg("updateSharedLocalSnapshot count of in-doubt "
+						"sub-transactions = %u", snapshot->subxcnt)));
+		memcpy(SharedLocalSnapshotSlot->snapshot.subxip, snapshot->subxip,
+			   snapshot->subxcnt * sizeof(TransactionId));
+	}
+
 	/* combocid stuff */
 	combocidSize = ((usedComboCids < MaxComboCids) ? usedComboCids : MaxComboCids );
 
@@ -1555,14 +1566,26 @@ GetSnapshotData(Snapshot snapshot)
 				snapshot->xmin = SharedLocalSnapshotSlot->snapshot.xmin;
 				snapshot->xmax = SharedLocalSnapshotSlot->snapshot.xmax;
 				snapshot->xcnt = SharedLocalSnapshotSlot->snapshot.xcnt;
+				snapshot->subxcnt = SharedLocalSnapshotSlot->snapshot.subxcnt;
 
 				/* We now capture our current view of the xip/combocid arrays */
 				memcpy(snapshot->xip, SharedLocalSnapshotSlot->snapshot.xip, snapshot->xcnt * sizeof(TransactionId));
 				memset(snapshot->xip + snapshot->xcnt, 0, (arrayP->maxProcs - snapshot->xcnt) * sizeof(TransactionId));
+				/*
+				 * Reader should see the same in-progress subtransactions as
+				 * the writer.  In case of overflow (subxcnt == -1), the reader
+				 * should consult pg_subtrans.
+				 */
+				if (snapshot->subxcnt > 0)
+				{
+					memset(snapshot->subxip, InvalidTransactionId,
+						   PGPROC_MAX_CACHED_SUBXIDS * sizeof(TransactionId));
+					memcpy(snapshot->subxip,
+						   SharedLocalSnapshotSlot->snapshot.subxip,
+						   snapshot->subxcnt * sizeof(TransactionId));
+				}
 
 				snapshot->curcid = SharedLocalSnapshotSlot->snapshot.curcid;
-
-				snapshot->subxcnt = -1;
 
 				/* combocid */
 				if (usedComboCids != SharedLocalSnapshotSlot->combocidcnt)

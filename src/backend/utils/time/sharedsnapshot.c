@@ -199,6 +199,7 @@ volatile SharedSnapshotSlot *SharedLocalSnapshotSlot = NULL;
 static Size slotSize = 0;
 static Size slotCount = 0;
 static Size xipEntryCount = 0;
+static Size subxipEntryCount = 0;
 
 
 /*
@@ -219,9 +220,11 @@ SharedSnapshotShmemSize(void)
 	Size		size;
 
 	xipEntryCount = MaxBackends + max_prepared_xacts;
+	subxipEntryCount = MaxBackends * PGPROC_MAX_CACHED_SUBXIDS;
 
 	slotSize = sizeof(SharedSnapshotSlot);
 	slotSize += mul_size(sizeof(TransactionId), (xipEntryCount));
+	slotSize += mul_size(sizeof(TransactionId), (subxipEntryCount));
 	slotSize = MAXALIGN(slotSize);
 
 	/*
@@ -246,7 +249,8 @@ CreateSharedSnapshotArray(void)
 {
 	bool	found;
 	int		i;
-	TransactionId *xip_base=NULL;
+	TransactionId *xip_base;
+	TransactionId *subxip_base;
 
 	/* Create or attach to the SharedSnapshot shared structure */
 	sharedSnapshotArray = (SharedSnapshotStruct *)
@@ -280,7 +284,11 @@ CreateSharedSnapshotArray(void)
 		sharedSnapshotArray->slots = (SharedSnapshotSlot *)&sharedSnapshotArray->xips;
 
 		/* xips start just after the last slot structure */
-		xip_base = (TransactionId *)&sharedSnapshotArray->slots[sharedSnapshotArray->maxSlots];
+		xip_base = (TransactionId *) &sharedSnapshotArray->slots[
+			sharedSnapshotArray->maxSlots];
+		/* subxips (in-progress subtransactions) start after the xip array */
+		subxip_base = (TransactionId *) &xip_base[
+			xipEntryCount * sharedSnapshotArray->maxSlots];
 
 		for (i=0; i < sharedSnapshotArray->maxSlots; i++)
 		{
@@ -291,13 +299,16 @@ CreateSharedSnapshotArray(void)
 			tmpSlot->slotLock = LWLockAssign();
 
 			/*
-			 * Fixup xip array pointer reference space allocated after slot structs:
-			 *
-			 * Note: xipEntryCount is initialized in SharedSnapshotShmemSize().
-			 * So each slot gets (MaxBackends + max_prepared_xacts) transaction-ids.
+			 * Initialize xip and subxip pointers to proper locations in shared
+			 * memory.  Each slot gets xipEntryCount XIDs for in-progress
+			 * top-level transactions and subxipEntryCount XIDs for in-progress
+			 * subtransactions.  The required shared memory is allocated in
+			 * SharedSnapshotShmemSize().
 			 */
-			tmpSlot->snapshot.xip = &xip_base[xipEntryCount];
+			tmpSlot->snapshot.xip = xip_base;
 			xip_base += xipEntryCount;
+			tmpSlot->snapshot.subxip = subxip_base;
+			subxip_base += subxipEntryCount;
 		}
 	}
 
