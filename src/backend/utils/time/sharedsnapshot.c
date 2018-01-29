@@ -722,6 +722,12 @@ dumpSharedLocalSnapshot_forCursor(void)
 			break;
 		count += src->snapshot.xcnt * sizeof(TransactionId);
 
+		FileWriteFieldWithCount(count, f, src->snapshot.subxcnt);
+
+		if (!FileWriteOK(f, &src->snapshot.subxip, src->snapshot.subxcnt * sizeof(TransactionId)))
+			break;
+		count += src->snapshot.subxcnt * sizeof(TransactionId);
+
 		FileWriteFieldWithCount(count, f, src->snapshot.curcid);
 
 		/*
@@ -869,6 +875,12 @@ readSharedLocalSnapshot_forCursor(Snapshot snapshot)
 
 	/* zero out the slack in the xip-array */
 	memset(snapshot->xip + snapshot->xcnt, 0, (xipEntryCount - snapshot->xcnt)*sizeof(TransactionId));
+
+	memcpy(&snapshot->subxcnt, p, sizeof(snapshot->subxcnt));
+	p += sizeof(snapshot->subxcnt);
+
+	memcpy(snapshot->subxip, p, snapshot->subxcnt * sizeof(TransactionId));
+	p += snapshot->subxcnt * sizeof(TransactionId);
 
 	memcpy(&snapshot->curcid, p, sizeof(snapshot->curcid));
 

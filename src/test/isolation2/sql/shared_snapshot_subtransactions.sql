@@ -4,38 +4,34 @@
 create table sharedsnapshot_t1(a int, b int) distributed by (a);
 create table sharedsnapshot_t2(a int, b int) distributed by (a);
 
--- Session1: create two subtransactions.
+-- Session 1: start a subtransaction and insert a few tuples.  The
+-- subtransaction will be included in subxip array of the serializable
+-- snapshot taken by session 2.
 1: begin;
 1: savepoint s1;
-1: insert into sharedsnapshot_t1 select i, i from generate_series(1,10)i;
-1: savepoint s2;
-1: delete from sharedsnapshot_t1 where a = 3;
+1: insert into sharedsnapshot_t1 select 1, i from generate_series(1,5)i;
 
--- Session2: cereate one more subtransaction. 
-2: begin;
-2: insert into sharedsnapshot_t2 select i, i from generate_series(1,10)i;
-2: savepoint s1;
-2: insert into sharedsnapshot_t2 select i, i from generate_series(11,20)i;
+-- Advance latestCompletedXid, so that xmax of subsquent snapshots
+-- will be newer than session 1's subxid.
+insert into sharedsnapshot_t2 select 1, i from generate_series(1,10)i;
 
--- Session3: run multi-slice query involving one reader gang.
--- Serializable isolation level is needed so that the writer's
--- snapshot sees all 4 subtransactions created earlier as in-progress.
--- Readers share this snapshot from their writers.
-3: begin isolation level serializable;
-3: select 1;
+-- Session 2: acquire a serializable snapshot.  Subxip array of this
+-- snapshot should include session 1's subtransaction.
+2: begin isolation level serializable;
+2: select * from gp_dist_random('gp_id');
 
--- Commit all subtransactions and their top transactions so that
--- in-progress array is consulted to determine visibility.  This
--- doesn't happen for a transaction that is not known committed.
+-- Commit subtransaction and its top transaction.
 1: release s1;
-2: release s1;
 1: commit;
-2: commit;
 
--- No tuples should be returned because sessions 1 & 2 are still
--- in-progress according to the serializable snapshot.
-3: select * from sharedsnapshot_t1 t1, sharedsnapshot_t2 t2 where t1.a = t2.b and t1.a > 7;
-3: end;
+-- Run a multi-slice query involving a reader gang.  Readers should
+-- consider tuples inserted by session 1's subtransaction as invisible
+-- because their xmin should be in-progress according to writer's
+-- subxip array.  Note that distributed snapshot is ignored for
+-- subtransaction IDs because local to distributed XID mapping is
+-- maintained only for top transaction ID.
+2: select * from sharedsnapshot_t1 t1, sharedsnapshot_t2 t2 where t1.a = t2.b;
+2: end;
 
--- Obtain new snapshot so that effects of sessions 1 & 2 are visible.
-3: select * from sharedsnapshot_t1 t1, sharedsnapshot_t2 t2 where t1.a = t2.b and t1.a > 7;
+-- Obtain a new snapshot so that session0U's xmin's are visible.
+2: select * from sharedsnapshot_t1 t1, sharedsnapshot_t2 t2 where t1.a = t2.b;
