@@ -1,5 +1,7 @@
--- Test that readers obtain in-progress subtransactions from writer's
--- snapshot through shared local snapshot slot.
+-- In a multi-slice query execution, readers and writer should use the
+-- same in-progress subtransaction information to check visibility of
+-- tuples against a snapshot.  The test validates this by executing a
+-- multi-slice query and a subtransaction concurrently.
 
 create table sharedsnapshot_t1(a int, b int) distributed by (a);
 CREATE
@@ -33,6 +35,12 @@ Greenplum|-1         |-1  |-1
 Greenplum|-1         |-1  |-1     
 (3 rows)
 
+-- Session 3: cursor is a special reader gang.
+3: begin isolation level serializable;
+BEGIN
+3: declare cursor_t1t2 cursor for select * from sharedsnapshot_t1 t1, sharedsnapshot_t2 t2 where t1.a = t2.b;
+DECLARE
+
 -- Commit subtransaction and its top transaction.
 1: release s1;
 RELEASE
@@ -50,6 +58,13 @@ a|b|a|b
 -+-+-+-
 (0 rows)
 2: end;
+END
+
+3: fetch all from cursor_t1t2;
+a|b|a|b
+-+-+-+-
+(0 rows)
+3: end;
 END
 
 -- Obtain a new snapshot so that session0U's xmin's are visible.
