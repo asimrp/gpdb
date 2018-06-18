@@ -124,13 +124,6 @@ cdb_sequence_nextval(SeqTable elm,
                      int64     *pcached,
                      int64     *pincrement,
                      bool      *seq_overflow);
-static void
-cdb_sequence_nextval_proxy(Relation seqrel,
-                           int64   *plast,
-                           int64   *pcached,
-                           int64   *pincrement,
-                           bool    *poverflow);
-
 /*
  * DefineSequence
  *				Creates a new sequence relation
@@ -598,6 +591,10 @@ nextval(PG_FUNCTION_ARGS)
 	RangeVar   *sequence;
 	Oid			relid;
 
+	if (IS_QUERY_DISPATCHER())
+	{
+		ereport(ERROR, (errmsg("nextval cannot run on master, use nextval_segments instead")));
+	}
 	sequence = makeRangeVarFromNameList(textToQualifiedNameList(seqin));
 	relid = RangeVarGetRelid(sequence, false);
 
@@ -609,6 +606,10 @@ nextval_oid(PG_FUNCTION_ARGS)
 {
 	Oid			relid = PG_GETARG_OID(0);
 
+	if (IS_QUERY_DISPATCHER())
+	{
+		ereport(ERROR, (errmsg("nextval cannot run on master, use nextval_segments instead")));
+	}
 	PG_RETURN_INT64(nextval_internal(relid));
 }
 
@@ -647,19 +648,12 @@ nextval_internal(Oid relid)
 						RelationGetRelationName(seqrel))));
 
 	/* Update the sequence object. */
-	if (Gp_role == GP_ROLE_EXECUTE)
-		cdb_sequence_nextval_proxy(seqrel,
-								   &elm->last,
-								   &elm->cached,
-								   &elm->increment,
-								   &is_overflow);
-	else
-		cdb_sequence_nextval(elm,
-							 seqrel,
-							 &elm->last,
-							 &elm->cached,
-							 &elm->increment,
-							 &is_overflow);
+	cdb_sequence_nextval(elm,
+						 seqrel,
+						 &elm->last,
+						 &elm->cached,
+						 &elm->increment,
+						 &is_overflow);
 	last_used_seq = elm;
 
 	if (is_overflow)
@@ -772,11 +766,11 @@ cdb_sequence_nextval(SeqTable elm,
 				}
 				else
 				{
-					next = minv;
+					next = minv + GpIdentity.segindex * incby;
 				}
 			}
 			else
-				next += incby;
+				next += (GpIdentity.numsegments * incby);
 		}
 		else
 		{
@@ -792,11 +786,11 @@ cdb_sequence_nextval(SeqTable elm,
 				}
 				else
 				{
-					next = maxv;
+					next = maxv + GpIdentity.segindex * incby;
 				}
 			}
 			else
-				next += incby;
+				next += (GpIdentity.numsegments * incby);
 		}
 		fetch--;
 		if (rescnt < cache)
@@ -1512,12 +1506,18 @@ init_params(List *options, bool isInit,
 			new->last_value = defGetInt64(restart_value);
 		else
 			new->last_value = new->start_value;
+		if (!IS_QUERY_DISPATCHER())
+			new->last_value += GpIdentity.segindex * new->increment_by;
 		new->is_called = false;
 		new->log_cnt = 1;
 	}
 	else if (isInit)
 	{
-		new->last_value = new->start_value;
+		if (!IS_QUERY_DISPATCHER())
+			new->last_value = new->start_value +
+				GpIdentity.segindex * new->increment_by;
+		else
+			new->last_value = new->start_value;
 		new->is_called = false;
 		new->log_cnt = 1;
 	}
@@ -1821,30 +1821,6 @@ cdb_sequence_relation_term(Relation seqrel)
     if (seqrel->rd_rel)
         pfree(seqrel->rd_rel);
 }                               /* cdb_sequence_relation_term */
-
-
-
-/*
- * CDB: forward a nextval request from qExec to the sequence server
- */
-void
-cdb_sequence_nextval_proxy(Relation	seqrel,
-                           int64   *plast,
-                           int64   *pcached,
-                           int64   *pincrement,
-                           bool    *poverflow)
-{
-
-	sendSequenceRequest(GetSeqServerFD(),
-						seqrel,
-    					gp_session_id,
-    					plast,
-    					pcached,
-    					pincrement,
-    					poverflow);
-
-}                               /* cdb_sequence_server_nextval */
-
 
 /*
  * CDB: nextval entry point called by sequence server
