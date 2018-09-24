@@ -2056,6 +2056,20 @@ AtEOXact_AppendOnly(void)
 	appendOnlyInsertXact = false;
 }
 
+/*
+ * Fetches a record from the in memory AO Rel Hash
+ *
+ * For external use by client libraries. Use `AORelGetHashEntry` for
+ * internal access to an AO hash entry.
+ */
+void
+GpFetchEntryFromAppendOnlyHash(Oid relid, AORelHashEntry foundAoEntry) {
+	LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
+	AORelHashEntry aoentry = AORelGetHashEntry(relid);
+	memcpy(foundAoEntry, aoentry, sizeof(AORelHashEntryData));
+	LWLockRelease(AOSegFileLock);
+}
+
 void
 GpRemoveEntryFromAppendOnlyHash(Oid relid,
 	void (*successfully_removed_ao_entry)(Oid relid),

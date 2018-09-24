@@ -454,17 +454,13 @@ gp_get_ao_entry_from_cache(PG_FUNCTION_ARGS)
 
 		context = palloc(sizeof(struct GetAOEntryContext));
 		context->segno = 0;
-
-		LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
-		AORelHashEntry aoentry = AORelGetHashEntry(relid);
-		memcpy(&context->aoentry, aoentry, sizeof(AORelHashEntryData));
-		LWLockRelease(AOSegFileLock);
+		GpFetchEntryFromAppendOnlyHash(relid, &context->aoentry);
 
 		funcctx->user_fctx = (void *) context;
 
 		MemoryContextSwitchTo(oldcontext);
 		elog(NOTICE, "transactions using relid %d: %d",
-			 relid, aoentry->txns_using_rel);
+			 relid, context->aoentry.txns_using_rel);
 	}
 
 	funcctx = SRF_PERCALL_SETUP();
