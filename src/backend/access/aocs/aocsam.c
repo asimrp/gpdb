@@ -784,7 +784,7 @@ OpenAOCSDatumStreams(AOCSInsertDesc desc)
 
 	/* Never insert into a segment that is awaiting a drop */
 	elogif(desc->fsInfo->state == AOSEG_STATE_AWAITING_DROP, ERROR,
-		   "cannot insert into segno (%d) from AO relid %d that is in state AOSEG_STATE_AWAITING_DROP",
+		   "cannot insert into segno (%d) for AO relid %d that is in state AOSEG_STATE_AWAITING_DROP",
 		   desc->cur_segno, RelationGetRelid(desc->aoi_rel));
 
 	desc->rowCount = seginfo->total_tupcount;
