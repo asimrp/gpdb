@@ -2070,6 +2070,12 @@ GpFetchEntryFromAppendOnlyHash(Oid relid, AORelHashEntry foundAoEntry) {
 	LWLockRelease(AOSegFileLock);
 }
 
+/*
+ * Remove an entry from the Append-only hash
+ *
+ * For external use by client libraries. Use `AORelRemoveHashEntry`
+ * for internal removal of an AO hash entry.
+ */
 void
 GpRemoveEntryFromAppendOnlyHash(Oid relid,
 	void (*successfully_removed_ao_entry)(Oid relid),
