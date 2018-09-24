@@ -60,7 +60,7 @@ static bool AOHashTableInit(void);
 static AORelHashEntry AppendOnlyRelHashNew(Oid relid, bool *exists);
 static AORelHashEntry AORelLookupHashEntry(Oid relid);
 static bool AORelCreateHashEntry(Oid relid);
-static bool *GetFileSegStateInfoFromSegments(Relation parentrel);
+static bool *get_awaiting_drop_status_from_segments(Relation parentrel);
 static int64 *GetTotalTupleCountFromSegments(Relation parentrel, int segno);
 
 /*
@@ -211,8 +211,7 @@ AORelCreateHashEntry(Oid relid)
 		aocsallfsinfo = GetAllAOCSFileSegInfo(aorel, SnapshotNow, &total_segfiles);
 	}
 
-	/* Ask segment DBs about the segfile status */
-	awaiting_drop = GetFileSegStateInfoFromSegments(aorel);
+	awaiting_drop = get_awaiting_drop_status_from_segments(aorel);
 
 	heap_close(aorel, RowExclusiveLock);
 
@@ -1405,7 +1404,7 @@ GetTotalTupleCountFromSegments(Relation parentrel,
  * dispatch cost increases as the number of segment becomes large.
  */
 static bool *
-GetFileSegStateInfoFromSegments(Relation parentrel)
+get_awaiting_drop_status_from_segments(Relation parentrel)
 {
 	StringInfoData sqlstmt;
 	Relation	aosegrel;
