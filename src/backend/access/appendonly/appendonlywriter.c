@@ -2098,6 +2098,7 @@ GpRemoveEntryFromAppendOnlyHash(Oid relid,
 	AORelHashEntry aoentry = AORelGetHashEntry(relid);
 
 	if (aoentry->txns_using_rel != 0) {
+		release_lightweight_lock();
 		entry_in_use_error(relid, aoentry->txns_using_rel);
 		return;
 	}
