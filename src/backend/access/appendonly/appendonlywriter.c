@@ -2056,3 +2056,32 @@ AtEOXact_AppendOnly(void)
 
 	appendOnlyInsertXact = false;
 }
+
+void
+GpRemoveEntryFromAppendOnlyHash(Oid relid,
+	void (*successfully_removed_ao_entry)(Oid relid),
+	void (*ao_entry_not_in_cache)(Oid relid),
+	void (*not_query_dispatcher_error)(),
+	void (*entry_in_use_error)(Oid relid, int number_of_usages)) {
+
+	if (!IS_QUERY_DISPATCHER()) {
+		not_query_dispatcher_error();
+		return;
+	}
+
+	LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
+
+	AORelHashEntry aoentry = AORelGetHashEntry(relid);
+
+	if (aoentry->txns_using_rel != 0) {
+		entry_in_use_error(relid, aoentry->txns_using_rel);
+		return;
+	}
+
+	if (AORelRemoveHashEntry(relid))
+		successfully_removed_ao_entry(relid);
+	else
+		ao_entry_not_in_cache(relid);
+
+	LWLockRelease(AOSegFileLock);
+}

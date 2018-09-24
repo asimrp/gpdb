@@ -362,6 +362,23 @@ gp_aovisimap_entry_name_wrapper(PG_FUNCTION_ARGS)
 	PG_RETURN_DATUM(returnValue);
 }
 
+static void successfully_removed_ao_entry(Oid relid) {
+	elog(NOTICE, "AO entry removed from cache for %d", relid);
+}
+
+static void ao_entry_not_in_cache(Oid relid) {
+	elog(NOTICE, "AO entry does not exist in cache for %d", relid);
+}
+
+static void not_query_dispatcher_error() {
+	elog(ERROR, "ao entries are maintained only on query dispatcher");
+}
+
+static void entry_in_use_error(Oid relid, int number_of_usages) {
+	elog(ERROR, "relid %d is used by %d transactions, cannot remove it yet",
+	     relid, number_of_usages);
+}
+
 /*
  * Interface to remove an entry from AppendOnlyHash cache.
  */
@@ -370,21 +387,11 @@ gp_remove_ao_entry_from_cache(PG_FUNCTION_ARGS)
 {
 	Oid relid = PG_GETARG_OID(0);
 
-	if (!IS_QUERY_DISPATCHER())
-		elog(ERROR, "ao entries are maintained only on query dispatcher");
-
-	LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
-	AORelHashEntry aoentry = AORelGetHashEntry(relid);
-	if (aoentry->txns_using_rel != 0)
-		elog(ERROR, "relid %d is used by %d transactions, cannot remove it yet",
-			 relid, aoentry->txns_using_rel);
-
-	if (AORelRemoveHashEntry(relid))
-		elog(NOTICE, "AO entry removed from cache for %d", relid);
-	else
-		elog(NOTICE, "AO entry does not exist in cache for %d", relid);
-
-	LWLockRelease(AOSegFileLock);
+	GpRemoveEntryFromAppendOnlyHash(relid,
+		successfully_removed_ao_entry,
+		ao_entry_not_in_cache,
+		not_query_dispatcher_error,
+		entry_in_use_error);
 }
 
 /*
