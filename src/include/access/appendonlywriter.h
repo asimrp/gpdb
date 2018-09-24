@@ -238,7 +238,6 @@ extern void GpFetchEntryFromAppendOnlyHash(Oid relid,
 extern void GpRemoveEntryFromAppendOnlyHash(Oid relid,
 	void (*successfully_removed_ao_entry)(Oid relid),
 	void (*ao_entry_not_in_cache)(Oid relid),
-	void (*not_query_dispatcher_error)(),
 	void (*entry_in_use_error)(Oid relid, int number_of_usages));
 
 #endif							/* APPENDONLYWRITER_H */

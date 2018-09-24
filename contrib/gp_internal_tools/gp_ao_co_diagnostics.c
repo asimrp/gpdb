@@ -385,12 +385,14 @@ static void entry_in_use_error(Oid relid, int number_of_usages) {
 void
 gp_remove_ao_entry_from_cache(PG_FUNCTION_ARGS)
 {
+	if (!IS_QUERY_DISPATCHER())
+		not_query_dispatcher_error();
+
 	Oid relid = PG_GETARG_OID(0);
 
 	GpRemoveEntryFromAppendOnlyHash(relid,
 		successfully_removed_ao_entry,
 		ao_entry_not_in_cache,
-		not_query_dispatcher_error,
 		entry_in_use_error);
 }
 
@@ -406,11 +408,10 @@ struct GetAOEntryContext
 Datum
 gp_get_ao_entry_from_cache(PG_FUNCTION_ARGS)
 {
-	Oid relid = PG_GETARG_OID(0);
-
 	if (!IS_QUERY_DISPATCHER())
-		elog(ERROR, "ao entries are maintained only on query dispatcher");
+		not_query_dispatcher_error();
 
+	Oid relid = PG_GETARG_OID(0);
 	FuncCallContext *funcctx;
 	struct GetAOEntryContext *context;
 
