@@ -2842,16 +2842,25 @@ CopyTo(CopyState cstate)
 				bool *proj = NULL;
 
 				int nvp = tupDesc->natts;
-				int i;
 
 				if (tupDesc->tdhasoid)
 				{
 				    elog(ERROR, "OIDS=TRUE is not allowed on tables that use column-oriented storage. Use OIDS=FALSE");
 				}
 
-				proj = palloc(sizeof(bool) * nvp);
-				for(i = 0; i < nvp; ++i)
-				    proj[i] = true;
+				proj = palloc0(sizeof(bool) * nvp);
+				/*
+				 * attnumlist is constructed after filtering out dropped
+				 * columns.  Use it to mark columns to be projected so as to
+				 * avoid reading (and decompressing) dropped column data from
+				 * disk.
+				 */
+				foreach(cur, cstate->attnumlist)
+				{
+					int			attnum = lfirst_int(cur);
+					Assert(attnum <= nvp);
+					proj[attnum-1] = true;
+				}
 
 				scan = aocs_beginscan(rel, GetActiveSnapshot(),
 									  GetActiveSnapshot(),
