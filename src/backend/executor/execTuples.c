@@ -797,8 +797,18 @@ ExecFetchSlotMemTuple(TupleTableSlot *slot, bool inline_toast)
 	slot->PRIVATE_tts_memtuple = newTuple;
 
 	if(oldTuple)
+	{
 		pfree(oldTuple);
-
+		/*
+		 * The values array in the slot no longer points to
+		 * valid memory after the oldTuple is free'd.  Reset
+		 * the virtual flag so that the subsequent call to
+		 * slot_get*() will read the values from newly formed
+		 * memtuple.
+		 */
+		slot->PRIVATE_tts_nvalid = 0;
+		TupClearVirtualTuple(slot);
+	}
 	return newTuple;
 }
 
