@@ -148,6 +148,8 @@
 
 #include "postgres.h"
 
+#include <sys/mman.h>
+
 #include "access/distributedlog.h"
 #include "access/twophase.h"  /*max_prepared_xacts*/
 #include "access/xact.h"
@@ -858,11 +860,22 @@ readSharedLocalSnapshot_forCursor(Snapshot snapshot)
 	memcpy(&snapshot->xcnt, p, sizeof(snapshot->xcnt));
 	p += sizeof(snapshot->xcnt);
 
+#define PROCARRAY_MAXPROCS	(MaxBackends + max_prepared_xacts)
+	if (mprotect(snapshot->xip,
+				 PROCARRAY_MAXPROCS * sizeof(TransactionId),
+				 PROT_READ|PROT_WRITE) !=0)
+		elog(ERROR, "failed to make xip read-write: %m");
+
 	memcpy(snapshot->xip, p, snapshot->xcnt * sizeof(TransactionId));
 	p += snapshot->xcnt * sizeof(TransactionId);
 
 	/* zero out the slack in the xip-array */
 	memset(snapshot->xip + snapshot->xcnt, 0, (xipEntryCount - snapshot->xcnt)*sizeof(TransactionId));
+
+	if (mprotect(snapshot->xip,
+				 PROCARRAY_MAXPROCS * sizeof(TransactionId),
+				 PROT_READ) !=0)
+		elog(ERROR, "failed to make xip read-write: %m");
 
 	memcpy(&snapshot->curcid, p, sizeof(snapshot->curcid));
 

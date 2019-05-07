@@ -44,6 +44,8 @@
 #include "postgres.h"
 
 #include <signal.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 #include "access/clog.h"
 #include "access/distributedlog.h"
@@ -2114,8 +2116,9 @@ GetSnapshotData(Snapshot snapshot)
 		 * First call for this snapshot. Snapshot is same size whether or not
 		 * we are in recovery, see later comments.
 		 */
-		snapshot->xip = (TransactionId *)
-			malloc(GetMaxSnapshotXidCount() * sizeof(TransactionId));
+		int pagesize = sysconf(_SC_PAGESIZE);
+		size_t size = arrayP->maxProcs * sizeof(TransactionId);
+		snapshot->xip = (TransactionId *) valloc(TYPEALIGN(pagesize, size));
 		if (snapshot->xip == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
@@ -2258,9 +2261,19 @@ GetSnapshotData(Snapshot snapshot)
 				snapshot->xmax = SharedLocalSnapshotSlot->snapshot.xmax;
 				snapshot->xcnt = SharedLocalSnapshotSlot->snapshot.xcnt;
 
+				if (mprotect(snapshot->xip,
+							 arrayP->maxProcs * sizeof(TransactionId),
+							 PROT_READ|PROT_WRITE) !=0)
+					elog(ERROR, "failed to make xip read-write: %m");
+
 				/* We now capture our current view of the xip/combocid arrays */
 				memcpy(snapshot->xip, SharedLocalSnapshotSlot->snapshot.xip, snapshot->xcnt * sizeof(TransactionId));
 				memset(snapshot->xip + snapshot->xcnt, 0, (arrayP->maxProcs - snapshot->xcnt) * sizeof(TransactionId));
+
+				if (mprotect(snapshot->xip,
+							 arrayP->maxProcs * sizeof(TransactionId),
+							 PROT_READ) !=0)
+					elog(ERROR, "failed to make xip read-only: %m");
 
 				snapshot->curcid = SharedLocalSnapshotSlot->snapshot.curcid;
 
