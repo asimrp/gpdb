@@ -648,6 +648,8 @@ createdb(const CreatedbStmt *stmt)
 			 */
 			copydir(srcpath, dstpath, false);
 
+			SIMPLE_FAULT_INJECTOR("create_db_after_file_copy");
+
 			/* Record the filesystem change in XLOG */
 			{
 				xl_dbase_create_rec xlrec;
