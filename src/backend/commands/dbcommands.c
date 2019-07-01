@@ -867,8 +867,6 @@ dropdb(const char *dbname, bool missing_ok)
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
 					   dbname);
 
-	SIMPLE_FAULT_INJECTOR("drop_db_before_remove_object");
-
 	/* DROP hook for the database being removed */
 	InvokeObjectDropHook(DatabaseRelationId, db_id, 0);
 

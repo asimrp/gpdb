@@ -1,23 +1,21 @@
-CREATE DATABASE db_with_dropfailed;
-DROP TABLE IF EXISTS before_drop;
-CREATE TABLE before_drop(oid Oid);
+CREATE DATABASE db_with_drop_failed;
 
-INSERT INTO before_drop SELECT oid FROM pg_database WHERE datname='db_with_dropfailed';
+-- Inject fault on content0 primary to error during prepare phase of 2PC.
+SELECT gp_inject_fault2('end_prepare_two_phase', 'error', dbid, hostname, port)
+FROM gp_segment_configuration WHERE content=0 and role='p';
 
--- inject fault on content0 primary to error out before removing object
-SELECT gp_inject_fault2('drop_db_before_remove_object', 'panic', dbid, hostname, port)
-FROM gp_segment_configuration 
-WHERE content=0 and role='p';
+-- Should abort
+DROP DATABASE db_with_drop_failed;
 
--- should crash on segment 0
-DROP DATABASE db_with_dropfailed;
+-- The database should remain in catalog.
+SELECT count(1) = 1 as result FROM pg_database WHERE datname='db_with_drop_failed';
 
--- cleanup
-SELECT gp_inject_fault2('drop_db_before_remove_object', 'reset', dbid, hostname, port)
-FROM gp_segment_configuration 
-WHERE content=0 AND role='p';
+-- Try creating a table in this database.  If it succeeds, we are sure
+-- that the database directory and the catalog tables are still
+-- present.
+\! psql -d db_with_drop_failed -c "create table tbl_in_db_with_drop_failed()"
 
-SELECT * FROM pg_database WHERE datname='db_with_dropfailed';
-
-DROP TABLE before_drop;
+-- Cleanup
+SELECT gp_inject_fault2('end_prepare_two_phase', 'reset', dbid, hostname, port)
+FROM gp_segment_configuration WHERE content=0 AND role='p';
 DROP DATABASE db_with_dropfailed;
