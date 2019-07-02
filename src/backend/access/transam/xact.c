@@ -6378,11 +6378,12 @@ xact_redo_abort(xl_xact_abort *xlrec, TransactionId xid)
 	/* Make sure files supposed to be dropped are dropped */
 	if (xlrec->nrels > 0)
 	{
+		/* For a database to be dropped, we set relNode to InvalidOid */
 		if (xlrec->xnodes[0].node.relNode == InvalidOid)
-			removedbdir(xlrec->xnodes[0].node.dbNode, xlrec->xnodes[0].node.spcNode);
+			DropDatabaseDirectories(xlrec->xnodes, xlrec->nrels);
+		else
+			DropRelationFiles(xlrec->xnodes, xlrec->nrels, true);
 	}
-	
-	DropRelationFiles(xlrec->xnodes, xlrec->nrels, true);
 
 	DoTablespaceDeletion(xlrec->tablespace_oid_to_abort);
 }

@@ -1714,7 +1714,7 @@ DropDatabaseDirectories(RelFileNodePendingDelete *delrels, int ndelrels)
 		if (i == 0)
 			droppedDbOid = delrels[i].node.dbNode;
 		Assert(delrels[i].node.dbNode == droppedDbOid);
-		removedbdir(delrels[i].node.dbNode, delrels[i].node.spcNode);
+		removedbdir(droppedDbOid, delrels[i].node.spcNode);
 	}
 }
 
