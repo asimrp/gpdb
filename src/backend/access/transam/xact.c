@@ -19,6 +19,7 @@
 
 #include <time.h>
 #include <unistd.h>
+#include <commands/dbcommands.h>
 
 #include "access/appendonlywriter.h"
 #include "access/multixact.h"
@@ -6378,8 +6379,7 @@ xact_redo_abort(xl_xact_abort *xlrec, TransactionId xid)
 	if (xlrec->nrels > 0)
 	{
 		if (xlrec->xnodes[0].node.relNode == InvalidOid)
-			
-			removedbdir();
+			removedbdir(xlrec->xnodes[0].node.dbNode, xlrec->xnodes[0].node.spcNode);
 	}
 	
 	DropRelationFiles(xlrec->xnodes, xlrec->nrels, true);

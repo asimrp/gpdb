@@ -42,6 +42,7 @@
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
 #include "pg_trace.h"
+#include "commands/dbcommands.h"
 
 #include "catalog/pg_tablespace.h"
 #include "utils/faultinjector.h"

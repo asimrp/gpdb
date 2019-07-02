@@ -471,13 +471,12 @@ smgrGetPendingDeletes(bool forCommit, RelFileNodePendingDelete **ptr)
 	nrels = 0;
 	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
 	{
-		if (pending->nestLevel >= nestLevel && pending->atCommit == forCommit &&
+		if (pending->nestLevel >= nestLevel && pending->atCommit == forCommit)
 			/*
 			 * Greenplum allows transactions that access temporary tables to be
 			 * prepared.
 			 */
 			/* && pending->relnode.backend == InvalidBackendId) */
-				)
 			nrels++;
 	}
 	if (nrels == 0)
@@ -489,12 +488,11 @@ smgrGetPendingDeletes(bool forCommit, RelFileNodePendingDelete **ptr)
 	*ptr = rptr;
 	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
 	{
-		if (pending->nestLevel >= nestLevel && pending->atCommit == forCommit &&
+		if (pending->nestLevel >= nestLevel && pending->atCommit == forCommit)
 			/*
 			 * Keep this loop condition identical to above
 			 */
 			/* && pending->relnode.backend == InvalidBackendId) */
-				)
 		{
 			*rptr = pending->relnode;
 			rptr++;

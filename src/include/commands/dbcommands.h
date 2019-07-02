@@ -55,6 +55,7 @@ typedef struct xl_dbase_drop_rec
 
 extern Oid	createdb(const CreatedbStmt *stmt);
 extern void dropdb(const char *dbname, bool missing_ok);
+extern void removedbdir(Oid db_id, Oid tblspcoid);
 extern Oid	RenameDatabase(const char *oldname, const char *newname);
 extern Oid	AlterDatabase(AlterDatabaseStmt *stmt, bool isTopLevel);
 extern Oid	AlterDatabaseSet(AlterDatabaseSetStmt *stmt);
