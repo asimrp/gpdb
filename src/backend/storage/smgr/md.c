@@ -1699,6 +1699,25 @@ ForgetDatabaseFsyncRequests(Oid dbid)
 }
 
 /*
+ * Drop database directories 
+ */
+void
+DropDatabaseDirectories(RelFileNodePendingDelete *delrels, int ndelrels)
+{
+	int i;
+	Oid droppedDbOid;
+	
+	for (i = 0; i < ndelrels; i++)
+	{
+		Assert(delrels[i].node.relNode == InvalidOid);
+		if (i == 0)
+			droppedDbOid = delrels[i].node.dbNode;
+		Assert(delrels[i].node.dbNode == droppedDbOid);
+		removedbdir(delrels[i].node.dbNode, delrels[i].node.spcNode);
+	}
+}
+
+/*
  * DropRelationFiles -- drop files of all given relations
  */
 void

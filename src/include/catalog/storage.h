@@ -19,6 +19,7 @@
 #include "utils/relcache.h"
 
 extern void RelationCreateStorage(RelFileNode rnode, char relpersistence, char relstorage);
+extern void DatabaseCreateStorage(Oid db_id, Oid dsttablespace);
 extern void RelationDropStorage(Relation rel);
 extern void DatabaseDropStorage(Oid db_id, Oid dsttablespace);
 extern void RelationPreserveStorage(RelFileNode rnode, bool atCommit);

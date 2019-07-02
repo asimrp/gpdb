@@ -63,6 +63,8 @@ typedef struct PendingRelDelete
 
 static PendingRelDelete *pendingDeletes = NULL; /* head of linked list */
 
+static void databaseRegisterPendingDelete(Oid db_id, Oid tablespace_id, bool at_commit);
+
 /*
  * RelationCreateStorage
  *		Create physical storage for a relation.
@@ -118,6 +120,16 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, char relstorage)
 	pending->dbOperation = false;
 	pending->next = pendingDeletes;
 	pendingDeletes = pending;
+}
+
+/*
+ * DatabaseCreateStorage
+ *		Schedule unlinking of database directory at transaction abort.
+ */
+void
+DatabaseCreateStorage(Oid db_id, Oid tablespace_id)
+{
+	databaseRegisterPendingDelete(db_id, tablespace_id, false);
 }
 
 /*
@@ -184,11 +196,12 @@ RelationDropStorage(Relation rel)
 void
 DatabaseDropStorage(Oid db_id, Oid tablespace_id)
 {
-	/*
-	 * Drop/Alter database cannot be part of a transaction, therefore
-	 * pendingDeletes should be empty
-	 */
-	Assert(pendingDeletes == NULL);
+	databaseRegisterPendingDelete(db_id, tablespace_id, true);
+}
+
+static void
+databaseRegisterPendingDelete(Oid db_id, Oid tablespace_id, bool at_commit)
+{
 	PendingRelDelete *pending;
 
 	/* Add the relation to the list of stuff to delete at commit */
@@ -199,13 +212,12 @@ DatabaseDropStorage(Oid db_id, Oid tablespace_id)
 	pending->relnode.node.relNode = InvalidOid;
 
 	pending->relnode.isTempRelation = false;
-	pending->atCommit = true;	/* delete if commit */
+	pending->atCommit = at_commit;	/* delete if commit/abort */
 	pending->nestLevel = GetCurrentTransactionNestLevel();
 	pending->dbOperation = true;
 	pending->next = pendingDeletes;
 	pendingDeletes = pending;
 }
-
 /*
  * RelationPreserveStorage
  *		Mark a relation as not to be deleted after all.
@@ -374,12 +386,11 @@ smgrDoPendingDeletes(bool isCommit)
 			{
 				if (pending->dbOperation)
 				{
-					Assert(next == NULL);
 					Assert(pending->relnode.node.relNode == InvalidOid);
 					DropDatabaseDirectory(pending->relnode.node.dbNode,
-										pending->relnode.node.spcNode);
+										  pending->relnode.node.spcNode);
 					pfree(pending);
-					return;
+					continue;
 				}
 
 				SMgrRelation srel;
@@ -461,7 +472,6 @@ smgrGetPendingDeletes(bool forCommit, RelFileNodePendingDelete **ptr)
 	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
 	{
 		if (pending->nestLevel >= nestLevel && pending->atCommit == forCommit &&
-			!pending->dbOperation
 			/*
 			 * Greenplum allows transactions that access temporary tables to be
 			 * prepared.
@@ -480,7 +490,6 @@ smgrGetPendingDeletes(bool forCommit, RelFileNodePendingDelete **ptr)
 	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
 	{
 		if (pending->nestLevel >= nestLevel && pending->atCommit == forCommit &&
-			!pending->dbOperation
 			/*
 			 * Keep this loop condition identical to above
 			 */

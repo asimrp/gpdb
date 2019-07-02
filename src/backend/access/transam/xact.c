@@ -6375,6 +6375,13 @@ xact_redo_abort(xl_xact_abort *xlrec, TransactionId xid)
 	}
 
 	/* Make sure files supposed to be dropped are dropped */
+	if (xlrec->nrels > 0)
+	{
+		if (xlrec->xnodes[0].node.relNode == InvalidOid)
+			
+			removedbdir();
+	}
+	
 	DropRelationFiles(xlrec->xnodes, xlrec->nrels, true);
 
 	DoTablespaceDeletion(xlrec->tablespace_oid_to_abort);

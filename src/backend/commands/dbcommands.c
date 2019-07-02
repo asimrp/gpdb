@@ -642,6 +642,12 @@ createdb(const CreatedbStmt *stmt)
 			dstpath = GetDatabasePath(dboid, dsttablespace);
 
 			/*
+			 * Register the database directory with SMGR for cleanup in the
+			 * event of abort.
+			 */
+			DatabaseCreateStorage(dboid, dsttablespace);
+
+			/*
 			 * Copy this subdirectory to the new location
 			 *
 			 * We don't need to copy subdirectories
@@ -1435,13 +1441,8 @@ movedb(const char *dbname, const char *tblspcname)
 	SIMPLE_FAULT_INJECTOR("inside_move_db_transaction");
 }
 
-/*
- * This functions contains non-catalog modifications to be performed for movedb().
- * Its called after successfully marking the transaction as committed via pending
- * deletes.
- */
 void
-DropDatabaseDirectory(Oid db_id, Oid tblspcoid)
+removedbdir(Oid db_id, Oid tblspcoid)
 {
 	char *dbpath = GetDatabasePath(db_id, tblspcoid);
 	/*
@@ -1451,6 +1452,17 @@ DropDatabaseDirectory(Oid db_id, Oid tblspcoid)
 		ereport(WARNING,
 				(errmsg("some useless files may be left behind in old database directory \"%s\"",
 						dbpath)));
+}
+
+/*
+ * This functions contains non-catalog modifications to be performed for movedb().
+ * Its called after successfully marking the transaction as committed via pending
+ * deletes.
+ */
+void
+DropDatabaseDirectory(Oid db_id, Oid tblspcoid)
+{
+	removedbdir(db_id, tblspcoid);
 
 	/*
 	 * Record the filesystem change in XLOG
@@ -1996,10 +2008,11 @@ remove_dbtablespaces(Oid db_id)
 			continue;
 		}
 
-		if (!rmtree(dstpath, true))
-			ereport(WARNING,
-					(errmsg("some useless files may be left behind in old database directory \"%s\"",
-							dstpath)));
+		/*
+		 * Schedule removal of the database subdirectory in this tablespace at
+		 * the end of commit.
+		 */
+		DatabaseDropStorage(db_id, dsttablespace);
 
 		/* Record the filesystem change in XLOG */
 		{
@@ -2238,6 +2251,8 @@ dbase_redo(XLogRecPtr beginLoc  __attribute__((unused)), XLogRecPtr lsn  __attri
 		 * up-to-date for the copy.
 		 */
 		FlushDatabaseBuffers(xlrec->src_db_id);
+
+		DatabaseCreateStorage(xlrec->db_id, xlrec->tablespace_id);
 
 		/*
 		 * Copy this subdirectory to the new location
