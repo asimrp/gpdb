@@ -21,7 +21,7 @@
 extern void RelationCreateStorage(RelFileNode rnode, char relpersistence, char relstorage);
 extern void DatabaseCreateStorage(Oid db_id, Oid dsttablespace);
 extern void RelationDropStorage(Relation rel);
-extern void DatabaseDropStorage(Oid db_id, Oid dsttablespace);
+extern void DatabaseDropStorage(Oid db_id, Oid dsttablespace,char pending_mode);
 extern void RelationPreserveStorage(RelFileNode rnode, bool atCommit);
 extern void RelationTruncate(Relation rel, BlockNumber nblocks);
 
@@ -34,5 +34,9 @@ extern int	smgrGetPendingDeletes(bool forCommit, RelFileNodePendingDelete **ptr)
 extern void AtSubCommit_smgr(void);
 extern void AtSubAbort_smgr(void);
 extern void PostPrepare_smgr(void);
+
+#define		  PENDINGDEL_R      'r'		/* create/delete table */
+#define		  PENDINGDEL_DB     'd'		/* create/delete database */
+#define		  PENDINGDEL_DB_ALT 'a'		/* alter database*/
 
 #endif   /* STORAGE_H */

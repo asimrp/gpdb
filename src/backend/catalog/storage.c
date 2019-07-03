@@ -58,12 +58,12 @@ typedef struct PendingRelDelete
 	bool		atCommit;		/* T=delete at commit; F=delete at abort */
 	int			nestLevel;		/* xact nesting level of request */
 	struct PendingRelDelete *next;		/* linked-list link */
-	bool		dbOperation;	/* T=operate on database; F=operate on relation */
+	char        operation;	/* operation type is defined in storage.h PENDINGDEL_* */
 } PendingRelDelete;
 
 static PendingRelDelete *pendingDeletes = NULL; /* head of linked list */
 
-static void databaseRegisterPendingDelete(Oid db_id, Oid tablespace_id, bool at_commit);
+static void databaseRegisterPendingDelete(Oid db_id, Oid tablespace_id, bool at_commit, char pending_model);
 
 /*
  * RelationCreateStorage
@@ -117,7 +117,7 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, char relstorage)
 	pending->relnode.isTempRelation = backend == TempRelBackendId;
 	pending->atCommit = false;	/* delete if abort */
 	pending->nestLevel = GetCurrentTransactionNestLevel();
-	pending->dbOperation = false;
+	pending->operation = PENDINGDEL_R;
 	pending->next = pendingDeletes;
 	pendingDeletes = pending;
 }
@@ -129,7 +129,7 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, char relstorage)
 void
 DatabaseCreateStorage(Oid db_id, Oid tablespace_id)
 {
-	databaseRegisterPendingDelete(db_id, tablespace_id, false);
+	databaseRegisterPendingDelete(db_id, tablespace_id, false, PENDINGDEL_DB);
 }
 
 /*
@@ -172,7 +172,7 @@ RelationDropStorage(Relation rel)
 	pending->relnode.isTempRelation = rel->rd_backend == TempRelBackendId;
 	pending->atCommit = true;	/* delete if commit */
 	pending->nestLevel = GetCurrentTransactionNestLevel();
-	pending->dbOperation = false;
+	pending->operation = PENDINGDEL_R;
 	pending->next = pendingDeletes;
 	pendingDeletes = pending;
 
@@ -194,13 +194,13 @@ RelationDropStorage(Relation rel)
  *		Schedule unlinking of database directory at transaction commit.
  */
 void
-DatabaseDropStorage(Oid db_id, Oid tablespace_id)
+DatabaseDropStorage(Oid db_id, Oid tablespace_id,char pending_mode)
 {
-	databaseRegisterPendingDelete(db_id, tablespace_id, true);
+	databaseRegisterPendingDelete(db_id, tablespace_id, true, pending_mode);
 }
 
 static void
-databaseRegisterPendingDelete(Oid db_id, Oid tablespace_id, bool at_commit)
+databaseRegisterPendingDelete(Oid db_id, Oid tablespace_id, bool at_commit, char pending_mode)
 {
 	PendingRelDelete *pending;
 
@@ -214,7 +214,7 @@ databaseRegisterPendingDelete(Oid db_id, Oid tablespace_id, bool at_commit)
 	pending->relnode.isTempRelation = false;
 	pending->atCommit = at_commit;	/* delete if commit/abort */
 	pending->nestLevel = GetCurrentTransactionNestLevel();
-	pending->dbOperation = true;
+	pending->operation = pending_mode;
 	pending->next = pendingDeletes;
 	pendingDeletes = pending;
 }
@@ -384,11 +384,13 @@ smgrDoPendingDeletes(bool isCommit)
 			/* do deletion if called for */
 			if (pending->atCommit == isCommit)
 			{
-				if (pending->dbOperation)
+				if (pending->operation != PENDINGDEL_R)
 				{
 					Assert(pending->relnode.node.relNode == InvalidOid);
+					bool haslock = pending->operation == PENDINGDEL_DB_ALT ;
 					DropDatabaseDirectory(pending->relnode.node.dbNode,
-										  pending->relnode.node.spcNode);
+										  pending->relnode.node.spcNode,
+										  haslock);
 					pfree(pending);
 					continue;
 				}

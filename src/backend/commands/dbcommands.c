@@ -1436,7 +1436,7 @@ movedb(const char *dbname, const char *tblspcname)
 	 * register the db_id with pending deletes list to schedule removing database
 	 * directory on transaction commit.
 	 */
-	DatabaseDropStorage(db_id, src_tblspcoid);
+	DatabaseDropStorage(db_id, src_tblspcoid, PENDINGDEL_DB_ALT);
 
 	SIMPLE_FAULT_INJECTOR("inside_move_db_transaction");
 }
@@ -1460,7 +1460,7 @@ removedbdir(Oid db_id, Oid tblspcoid)
  * deletes.
  */
 void
-DropDatabaseDirectory(Oid db_id, Oid tblspcoid)
+DropDatabaseDirectory(Oid db_id, Oid tblspcoid, bool haslock)
 {
 	removedbdir(db_id, tblspcoid);
 
@@ -1482,7 +1482,7 @@ DropDatabaseDirectory(Oid db_id, Oid tblspcoid)
 		(void) XLogInsert(RM_DBASE_ID, XLOG_DBASE_DROP, rdata);
 	}
 
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH && haslock)
 	{
 		/* Now it's safe to release the database lock */
 		UnlockSharedObjectForSession(DatabaseRelationId, db_id, 0,
@@ -2012,7 +2012,7 @@ remove_dbtablespaces(Oid db_id)
 		 * Schedule removal of the database subdirectory in this tablespace at
 		 * the end of commit.
 		 */
-		DatabaseDropStorage(db_id, dsttablespace);
+		DatabaseDropStorage(db_id, dsttablespace, PENDINGDEL_DB);
 
 		/* Record the filesystem change in XLOG */
 		{
