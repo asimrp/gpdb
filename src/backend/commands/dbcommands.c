@@ -2252,8 +2252,6 @@ dbase_redo(XLogRecPtr beginLoc  __attribute__((unused)), XLogRecPtr lsn  __attri
 		 */
 		FlushDatabaseBuffers(xlrec->src_db_id);
 
-		DatabaseCreateStorage(xlrec->db_id, xlrec->tablespace_id);
-
 		/*
 		 * Copy this subdirectory to the new location
 		 *
