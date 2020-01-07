@@ -7203,6 +7203,8 @@ StartupXLOG(void)
 				/* Now apply the WAL record itself */
 				RmgrTable[record->xl_rmid].rm_redo(xlogreader);
 
+				SIMPLE_FAULT_INJECTOR("wal_redo");
+
 				/* Pop the error context stack */
 				error_context_stack = errcallback.previous;
 
