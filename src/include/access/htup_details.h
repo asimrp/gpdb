@@ -411,7 +411,13 @@ do { \
 	(tup)->t_choice.t_heap.t_field3.t_xvac = (xid); \
 } while (0)
 
-#define HeapTupleHeaderGetDatumLength(tup) \
+#define HeapTupleHeaderSetMovedPartitions(tup) \
+	ItemPointerSetMovedPartitions(&(tup)->t_ctid)
+
+#define HeapTupleHeaderIndicatesMovedPartitions(tup) \
+	ItemPointerIndicatesMovedPartitions(&tup->t_ctid)
+
+#define HeapTupleHeaderGetDatumLength(tup)		\
 	VARSIZE(tup)
 
 #define HeapTupleHeaderSetDatumLength(tup, len) \
