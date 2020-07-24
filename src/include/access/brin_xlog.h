@@ -34,8 +34,6 @@
 #define XLOG_BRIN_SAMEPAGE_UPDATE	0x30
 #define XLOG_BRIN_REVMAP_EXTEND		0x40
 #define XLOG_BRIN_DESUMMARIZE		0x50
-#define XLOG_BRIN_REVMAP_INIT_UPPER_BLK	0x60
-#define XLOG_BRIN_REVMAP_EXTEND_UPPER	0x70
 
 #define XLOG_BRIN_OPMASK			0x70
 
@@ -54,17 +52,9 @@ typedef struct xl_brin_createidx
 {
 	BlockNumber pagesPerRange;
 	uint16		version;
-	bool 		isAo;
 } xl_brin_createidx;
-#define SizeOfBrinCreateIdx (offsetof(xl_brin_createidx, isAo) + sizeof(bool))
 
-
-typedef struct xl_brin_createupperblk
-{
-	BlockNumber targetBlk;
-} xl_brin_createupperblk;
-#define SizeOfBrinCreateUpperBlk (offsetof(xl_brin_createupperblk, targetBlk) \
-								  + sizeof(BlockNumber))
+#define SizeOfBrinCreateIdx (offsetof(xl_brin_createidx, version) + sizeof(uint16))
 
 /*
  * This is what we need to know about a BRIN tuple insert
@@ -152,20 +142,6 @@ typedef struct xl_brin_desummarize
 
 #define SizeOfBrinDesummarize	(offsetof(xl_brin_desummarize, regOffset) + \
 								 sizeof(OffsetNumber))
-
-
-typedef struct xl_brin_revmap_extend_upper
-{
-	BlockNumber heapBlk;
-
-	/* extra information needed to update the revmap */
-	BlockNumber pagesPerRange;
-	BlockNumber revmapBlk;
-} xl_brin_revmap_extend_upper;
-#define SizeOfBrinRevmapExtendUpper	(offsetof(xl_brin_revmap_extend_upper, pagesPerRange) + \
-									 sizeof(BlockNumber))
-
-
 
 extern void brin_redo(XLogReaderState *record);
 extern void brin_desc(StringInfo buf, XLogReaderState *record);

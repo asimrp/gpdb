@@ -46,4 +46,8 @@
   descr => 'bitmap index access method',
   amname => 'bitmap', amhandler => 'bmhandler', amtype => 'i' },
 
+{ oid => '7197', oid_symbol => 'BRIN_AO_AM_OID',
+  descr => 'block range index (BRIN) access method for appendoptimized tables',
+  amname => 'brin_ao', amhandler => 'brin_aohandler', amtype => 'i' },
+
 ]

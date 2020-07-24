@@ -67,7 +67,7 @@ INSERT INTO brintest_ao (inetcol, cidrcol, int4rangecol) SELECT
 	'empty'::int4range
 FROM tenk1 ORDER BY thousand, tenthous LIMIT 25;
 
-CREATE INDEX brinaoidx ON brintest_ao USING brin (
+CREATE INDEX brinaoidx ON brintest_ao USING brin_ao (
 	byteacol,
 	charcol,
 	namecol,

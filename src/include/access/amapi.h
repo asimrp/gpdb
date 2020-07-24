@@ -60,6 +60,8 @@ typedef enum IndexAMProperty
  */
 
 /* build new index */
+typedef bool (*amcanbuild_function) (Relation heapRelation);
+
 typedef IndexBuildResult *(*ambuild_function) (Relation heapRelation,
 											   Relation indexRelation,
 											   struct IndexInfo *indexInfo);
@@ -207,6 +209,7 @@ typedef struct IndexAmRoutine
 	 */
 
 	/* interface functions */
+	amcanbuild_function amcanbuild;
 	ambuild_function ambuild;
 	ambuildempty_function ambuildempty;
 	aminsert_function aminsert;

@@ -2690,6 +2690,10 @@ perform_work_item(AutoVacuumWorkItem *workitem)
 		MemoryContextSwitchTo(PortalContext);
 
 		/* have at it */
+		/*
+		 * FIXME: use index AM interface instead of directly calling a
+		 * specific implementation
+		 */
 		switch (workitem->avw_type)
 		{
 			case AVW_BRINSummarizeRange:

@@ -32,6 +32,7 @@
 #include "access/bitmap_xlog.h"
 #include "access/distributedlog.h"
 #include "cdb/cdbappendonlyxlog.h"
+#include "access/brin_ao_xlog.h"
 
 
 /* must be kept in sync with RmgrData definition in xlog_internal.h */

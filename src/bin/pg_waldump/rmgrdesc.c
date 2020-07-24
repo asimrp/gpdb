@@ -33,6 +33,7 @@
 #include "utils/relmapper.h"
 
 #include "access/bitmap_xlog.h"
+#include "access/brin_ao_xlog.h"
 #include "access/distributedlog.h"
 #include "cdb/cdbappendonlyxlog.h"
 

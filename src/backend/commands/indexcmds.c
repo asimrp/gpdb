@@ -935,6 +935,12 @@ DefineIndex(Oid relationId,
                 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                  errmsg("append-only tables do not support unique indexes")));
 
+	if (amRoutine->amcanbuild && !amRoutine->amcanbuild(rel))
+		ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                 errmsg("access method \"%s\" does not support table access method",
+					 accessMethodName)));
+
 	amcanorder = amRoutine->amcanorder;
 	amoptions = amRoutine->amoptions;
 
