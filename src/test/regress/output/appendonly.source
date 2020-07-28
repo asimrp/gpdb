@@ -94,7 +94,7 @@ SHOW gp_default_storage_options;
  blocksize=65536,compresstype=none,checksum=true
 (1 row)
 
-SET default_table_access_method = 'appendoptimized';
+SET default_table_access_method = ao_row;
 SHOW default_table_access_method;
  default_table_access_method 
 -----------------------------

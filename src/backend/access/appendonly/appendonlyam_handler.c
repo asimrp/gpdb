@@ -45,7 +45,7 @@
 
 static void reset_state_cb(void *arg);
 
-static const TableAmRoutine appendonly_methods;
+static const TableAmRoutine ao_row_methods;
 
 typedef struct AppendOnlyDMLState
 {
@@ -407,26 +407,26 @@ ExecForceStoreMemTuple(MemTuple mtup, TupleTableSlot *slot,
 }
 
 /* ------------------------------------------------------------------------
- * Parallel aware Seq Scan callbacks for appendonly AM
+ * Parallel aware Seq Scan callbacks for ao_row AM
  * ------------------------------------------------------------------------
  */
 
 static Size
 appendonly_parallelscan_estimate(Relation rel)
 {
-	elog(ERROR, "parallel SeqScan not implemented for AO or AOCO tables");
+	elog(ERROR, "parallel SeqScan not implemented for AO_ROW tables");
 }
 
 static Size
 appendonly_parallelscan_initialize(Relation rel, ParallelTableScanDesc pscan)
 {
-	elog(ERROR, "parallel SeqScan not implemented for AO or AOCO tables");
+	elog(ERROR, "parallel SeqScan not implemented for AO_ROW tables");
 }
 
 static void
 appendonly_parallelscan_reinitialize(Relation rel, ParallelTableScanDesc pscan)
 {
-	elog(ERROR, "parallel SeqScan not implemented for AO or AOCO tables");
+	elog(ERROR, "parallel SeqScan not implemented for AO_ROW tables");
 }
 
 /* ------------------------------------------------------------------------
@@ -795,9 +795,9 @@ appendonly_relation_set_new_filenode(Relation rel,
 	*minmulti = GetOldestMultiXactId();
 
 	/*
-	 * No special treatment is needed for new AO/AOCO relation. Create the
-	 * underlying disk file storage for the relation.
-	 * No clean up is needed, RelationCreateStorage() is transactional.
+	 * No special treatment is needed for new AO_ROW/COLUMN relation. Create
+	 * the underlying disk file storage for the relation.  No clean up is
+	 * needed, RelationCreateStorage() is transactional.
 	 *
 	 * Segment files will be created when / if needed.
 	 */
@@ -1956,13 +1956,13 @@ appendonly_scan_sample_next_tuple(TableScanDesc scan, SampleScanState *scanstate
 /* ------------------------------------------------------------------------
  * Definition of the appendonly table access method.
  *
- * NOTE: While there is a lot of functionality shared with the aoco access
- * method, is best for the hanlder methods to remain static in order to honour
+ * NOTE: While there is a lot of functionality shared with the ao_column access
+ * method, is best for the handler methods to remain static in order to honour
  * the contract of the access method interface.
  * ------------------------------------------------------------------------
  */
 
-static const TableAmRoutine appendonly_methods = {
+static const TableAmRoutine ao_row_methods = {
 	.type = T_TableAmRoutine,
 
 	.slot_callbacks = appendonly_slot_callbacks,
@@ -2018,7 +2018,7 @@ static const TableAmRoutine appendonly_methods = {
 };
 
 Datum
-appendoptimized_tableam_handler(PG_FUNCTION_ARGS)
+ao_row_tableam_handler(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_POINTER(&appendonly_methods);
+	PG_RETURN_POINTER(&ao_row_methods);
 }
