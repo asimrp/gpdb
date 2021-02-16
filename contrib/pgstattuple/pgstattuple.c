@@ -330,6 +330,8 @@ pgstat_heap(Relation rel, FunctionCallInfo fcinfo)
 	Buffer		buffer;
 	pgstattuple_type stat = {0};
 	SnapshotData SnapshotDirty;
+	TupleTableSlot *slot;
+	bool shouldFree;
 
 	if (rel->rd_rel->relam != HEAP_TABLE_AM_OID)
 		ereport(ERROR,
@@ -344,15 +346,22 @@ pgstat_heap(Relation rel, FunctionCallInfo fcinfo)
 
 	nblocks = hscan->rs_nblocks;	/* # blocks to be scanned */
 
+	slot = MakeSingleTupleTableSlot(RelationGetDescr(rel), table_slot_callbacks(rel));
+
 	/* scan the relation */
-	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+ 	while(table_scan_getnextslot(scan, ForwardScanDirection, slot))
 	{
+		tuple = ExecFetchSlotHeapTuple(slot, false, &shouldFree);
+
+		/* We expect only a reference to the physical tuple, not a copy. */
+		Assert(!shouldFree);
+
 		CHECK_FOR_INTERRUPTS();
 
 		/* must hold a buffer lock to call HeapTupleSatisfiesVisibility */
 		LockBuffer(hscan->rs_cbuf, BUFFER_LOCK_SHARE);
 
-		if (HeapTupleSatisfiesVisibility(rel, tuple, &SnapshotDirty, hscan->rs_cbuf))
+		if (table_tuple_satisfies_snapshot(rel, slot, &SnapshotDirty))
 		{
 			stat.tuple_len += tuple->t_len;
 			stat.tuple_count++;
@@ -398,6 +407,7 @@ pgstat_heap(Relation rel, FunctionCallInfo fcinfo)
 		block++;
 	}
 
+	ExecDropSingleTupleTableSlot(slot);
 	table_endscan(scan);
 	relation_close(rel, AccessShareLock);
 
