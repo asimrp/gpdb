@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# A simple gpstart: this is just a demo that works only on a demo
+# cluster!  Start coordinator followed by all segments.  The idea is
+# to use native PostgreSQL command line options only.
+
+if [ -z $GPHOME ]; then
+    echo "GPHOME is not set"
+else
+    echo "using GPHOME as $GPHOME"
+fi
+
+if [ -z $COORDINATOR_DATA_DIRECTORY ]; then
+    echo "COORDINATOR_DATA_DIRECTORY is not set"
+else
+    echo "starting coordinator from $COORDINATOR_DATA_DIRECTORY"
+fi
+
+export PATH=$GPHOME/bin:$PATH
+
+ulimit -c unlimited
+
+# stop at first error
+set -e
+
+$GPHOME/bin/pg_ctl -D $COORDINATOR_DATA_DIRECTORY start
+
+echo "starting segments ..."
+for row in $(psql -t --csv -d postgres -c "select port,datadir from gp_segment_configuration where status = 'u' and (content<>-1 or role<>'p')")
+do
+    if [ "x$row" != "x" ]; then
+	datadir=$(expr "$row" : '[^/]*\([^ ]*\)')
+	port=$(expr "$row" : '[^0-9]*\([0-9]*\)')
+	$GPHOME/bin/pg_ctl start -D $datadir -o "-p $port"
+	if [ $? -ne 0 ]; then
+	    echo "failed to start $datadir"
+	    exit 1
+	fi
+    fi
+done
+
+# Wait until coordinator starts DTX recovery, FTS, etc. and
+# transitions to dispatch mode
+psql -d postgres -c "select transition_to_dispatch_mode()"
+
+echo "Greenplum cluster started"

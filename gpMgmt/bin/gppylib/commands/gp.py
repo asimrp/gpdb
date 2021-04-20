@@ -146,16 +146,10 @@ class PgCtlBackendOptions(CmdArgs):
 
     >>> str(PgCtlBackendOptions(5432, 1, 2))
     '-p 5432 --silent-mode=true'
-    >>> str(PgCtlBackendOptions(5432, 1, 2).set_coordinator())
-    '-p 5432 --silent-mode=true -i -c gp_role=dispatch'
-    >>> str(PgCtlBackendOptions(5432, 1, 2).set_execute())
-    '-p 5432 --silent-mode=true -i -c gp_role=execute'
     >>> str(PgCtlBackendOptions(5432, 1, 2).set_special('upgrade'))
     '-p 5432 --silent-mode=true -U'
     >>> str(PgCtlBackendOptions(5432, 1, 2).set_special('maintenance'))
     '-p 5432 --silent-mode=true -m'
-    >>> str(PgCtlBackendOptions(5432, 1, 2).set_utility())
-    '-p 5432 --silent-mode=true -c gp_role=utility'
     >>> str(PgCtlBackendOptions(5432, 1, 2).set_restricted(True,1))
     '-p 5432 --silent-mode=true -c superuser_reserved_connections=1'
     >>>
@@ -171,17 +165,6 @@ class PgCtlBackendOptions(CmdArgs):
         ])
 
     #
-    # coordinator/segment-specific options
-    #
-
-    def set_coordinator(self):
-        """
-        @param is_utility_mode: start with is_utility_mode?
-        """
-        self.append("-c gp_role=dispatch")
-        return self
-
-    #
     # startup mode options
     #
 
@@ -191,14 +174,6 @@ class PgCtlBackendOptions(CmdArgs):
         """
         opt = {None:None, 'upgrade':'-U', 'maintenance':'-m', 'convertCoordinatorDataDirToSegment':'-M'}[special]
         if opt: self.append(opt)
-        return self
-
-    def set_utility(self):
-        self.append("-c gp_role=utility")
-        return self
-
-    def set_execute(self):
-        self.append("-c gp_role=execute")
         return self
 
     def set_restricted(self, restricted, max_connections):
@@ -281,21 +256,16 @@ class PgCtlStopArgs(CmdArgs):
 class CoordinatorStart(Command):
     def __init__(self, name, dataDir, port, era,
                  wrapper, wrapper_args, specialMode=None, restrictedMode=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
-                 max_connections=1, utilityMode=False, ctxt=LOCAL, remoteHost=None,
+                 max_connections=1, ctxt=LOCAL, remoteHost=None,
                  wait=True
                  ):
         self.dataDir=dataDir
         self.port=port
-        self.utilityMode=utilityMode
         self.wrapper=wrapper
         self.wrapper_args=wrapper_args
 
         # build backend options
         b = PgCtlBackendOptions(port)
-        if utilityMode:
-            b.set_utility()
-        else:
-            b.set_coordinator()
         b.set_special(specialMode)
         b.set_restricted(restrictedMode, max_connections)
 
@@ -309,10 +279,10 @@ class CoordinatorStart(Command):
     @staticmethod
     def local(name, dataDir, port, era,
               wrapper, wrapper_args, specialMode=None, restrictedMode=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
-              max_connections=1, utilityMode=False):
+              max_connections=1):
         cmd=CoordinatorStart(name, dataDir, port, era,
                         wrapper, wrapper_args, specialMode, restrictedMode, timeout,
-                        max_connections, utilityMode)
+                        max_connections)
         cmd.run(validateAfter=True)
 
 #-----------------------------------------------
@@ -337,7 +307,7 @@ class SegmentStart(Command):
     """
 
     def __init__(self, name, gpdb, numContentsInCluster, era, mirrormode,
-                 utilityMode=False, ctxt=LOCAL, remoteHost=None,
+                 ctxt=LOCAL, remoteHost=None,
                  pg_ctl_wait=True, timeout=SEGMENT_TIMEOUT_DEFAULT,
                  specialMode=None, wrapper=None, wrapper_args=None):
 
@@ -350,10 +320,6 @@ class SegmentStart(Command):
 
         # build backend options
         b = PgCtlBackendOptions(port)
-        if utilityMode:
-            b.set_utility()
-        else:
-            b.set_execute()
         b.set_special(specialMode)
 
         # build pg_ctl command
@@ -364,13 +330,13 @@ class SegmentStart(Command):
         Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
 
     @staticmethod
-    def local(name, gpdb, numContentsInCluster, era, mirrormode, utilityMode=False):
-        cmd=SegmentStart(name, gpdb, numContentsInCluster, era, mirrormode, utilityMode)
+    def local(name, gpdb, numContentsInCluster, era, mirrormode):
+        cmd=SegmentStart(name, gpdb, numContentsInCluster, era, mirrormode)
         cmd.run(validateAfter=True)
 
     @staticmethod
-    def remote(name, remoteHost, gpdb, numContentsInCluster, era, mirrormode, utilityMode=False):
-        cmd=SegmentStart(name, gpdb, numContentsInCluster, era, mirrormode, utilityMode, ctxt=REMOTE, remoteHost=remoteHost)
+    def remote(name, remoteHost, gpdb, numContentsInCluster, era, mirrormode):
+        cmd=SegmentStart(name, gpdb, numContentsInCluster, era, mirrormode, ctxt=REMOTE, remoteHost=remoteHost)
         cmd.run(validateAfter=True)
 
 #-----------------------------------------------

@@ -40,7 +40,7 @@ bool		ResGroupActivated = false;
 void
 ResManagerShmemInit(void)
 {
-	if (IsResQueueEnabled() && Gp_role == GP_ROLE_DISPATCH)
+	if (IsResQueueEnabled() && IS_QUERY_DISPATCHER())
 	{
 		InitResScheduler();
 		InitResPortalIncrementHash();
@@ -54,7 +54,7 @@ ResManagerShmemInit(void)
 void
 InitResManager(void)
 {
-	if (IsResQueueEnabled() && Gp_role == GP_ROLE_DISPATCH && !am_walsender)
+	if (IsResQueueEnabled() && Gp_role == GP_ROLE_DISPATCH && !am_walsender && !am_ftsprobe)
 	{
 		gp_resmanager_memory_policy = (ResManagerMemoryPolicy *) &gp_resqueue_memory_policy;
 		gp_log_resmanager_memory = &gp_log_resqueue_memory;

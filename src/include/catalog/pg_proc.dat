@@ -10987,6 +10987,8 @@
 { oid => 7050, oid_symbol => 'BITMAP_INDEXAM_HANDLER_OID', descr => 'bitmap(internal)',
    proname => 'bmhandler', provolatile => 'v', prorettype => 'index_am_handler', proargtypes => 'internal', prosrc => 'bmhandler' },
 
+{ oid => 7001, descr => 'Transition the coordinator to dispatch mode during cluster startup',
+   proname => 'transition_to_dispatch_mode', provolatile => 'v', proparallel => 'u', prorettype => 'bool', proargtypes => 'int4', prosrc => 'transition_to_dispatch_mode', proexeclocation => 'c' },
 
 # AOCS functions.
 { oid => 9900, descr => 'decode internal AOCSVPInfo struct',

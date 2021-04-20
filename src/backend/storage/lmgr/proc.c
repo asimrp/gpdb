@@ -518,7 +518,7 @@ InitProcess(void)
 				gp_session_id == InvalidGpSessionId);
 
     MyProc->mppSessionId = gp_session_id;
-    elog(DEBUG1,"InitProcess(): gp_session_id %d, Gp_role %d",gp_session_id, Gp_role);
+    elog(LOG,"InitProcess(): gp_session_id %d, Gp_role %d",gp_session_id, Gp_role);
     
     MyProc->mppIsWriter = Gp_is_writer;
 

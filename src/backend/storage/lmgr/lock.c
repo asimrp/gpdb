@@ -421,7 +421,7 @@ InitLocks(void)
 	max_table_size = NLOCKENTS();
 
 	/* Allow for extra entries if resource locking is enabled. */
-	if (Gp_role == GP_ROLE_DISPATCH && IsResQueueEnabled())
+	if (IS_QUERY_DISPATCHER() && IsResQueueEnabled())
 	{
 		max_table_size = add_size(max_table_size, NRESLOCKENTS() );
 		max_table_size = add_size(max_table_size, NRESPROCLOCKENTS() );

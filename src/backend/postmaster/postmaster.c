@@ -987,16 +987,23 @@ PostmasterMain(int argc, char *argv[])
 		ExitPostmaster(1);
 	}
 
-	/* If gp_role is not set, use utility role instead.*/
-	if (Gp_role == GP_ROLE_UNDEFINED)
-		SetConfigOption("gp_role", "utility", PGC_POSTMASTER, PGC_S_OVERRIDE);
-
 	/*
 	 * Locate the proper configuration files and data directory, and read
 	 * postgresql.conf for the first time.
 	 */
 	if (!SelectConfigFiles(userDoption, progname))
 		ExitPostmaster(2);
+
+	/*
+	 * Determine gp_role based on content ID.  Set it with PGC_S_ARGV to let
+	 * the GUC system think that it is set on the command line.  This is
+	 * needed so that clients can overried it by setting
+	 *     PGOPTIONS='-c gp_role=...'
+	 */
+	if (GpIdentity.segindex > -1 && Gp_role == GP_ROLE_UNDEFINED)
+		SetConfigOption("gp_role", "execute", PGC_POSTMASTER, PGC_S_ARGV);
+	else if (Gp_role == GP_ROLE_UNDEFINED)
+		SetConfigOption("gp_role", "utility", PGC_POSTMASTER, PGC_S_ARGV);
 
 	/*
 	 * CDB/MPP/GPDB: Set the processor affinity (may be a no-op on
@@ -5584,6 +5591,12 @@ sigusr1_handler(SIGNAL_ARGS)
 	/* Process background worker state change. */
 	if (CheckPostmasterSignal(PMSIGNAL_BACKGROUND_WORKER_CHANGE))
 	{
+		/*
+		 * As part of startup sequence, this signal is sent to the coordinator
+		 * to transition to dispatch mode.
+		 */
+		if (Gp_role == GP_ROLE_UTILITY && IS_QUERY_DISPATCHER())
+			Gp_role = GP_ROLE_DISPATCH;
 		BackgroundWorkerStateChange();
 		StartWorkerNeeded = true;
 	}
@@ -5732,12 +5745,6 @@ sigusr1_handler(SIGNAL_ARGS)
 	if (CheckPostmasterSignal(PMSIGNAL_WAKEN_FTS) && FtsProbePID() != 0)
 	{
 		signal_child(FtsProbePID(), SIGINT);
-	}
-
-	if (CheckPostmasterSignal(PMSIGNAL_DTM_RECOVERED))
-	{
-		/* Report status, dtx recovery completed successfully */
-		AddToDataDirLockFile(LOCK_FILE_LINE_PM_STATUS, PM_STATUS_DTM_RECOVERED);
 	}
 
 	if (CheckPostmasterSignal(PMSIGNAL_WAKEN_DTX_RECOVERY) && DtxRecoveryPID() != 0)
@@ -7188,4 +7195,42 @@ amAuxiliaryBgWorker(void)
 	Assert(MyBgworkerEntry);
 
 	return isAuxiliaryBgWorker(MyBgworkerEntry);
+}
+
+/*
+ * Prod the coordinator to become a dispacher and wait until the transition
+ * completes.
+ *
+ * Startup sequence of a Greenplum cluster includes starting coordinator
+ * first, obtaining segment details and starting them next.  Once all segments
+ * are started, this function is invoked on coordinator to let it start DTX
+ * recovery, FTS and other background workers and set gp_role to dispatch.
+ */
+PG_FUNCTION_INFO_V1(transition_to_dispatch_mode);
+Datum
+transition_to_dispatch_mode(PG_FUNCTION_ARGS)
+{
+	Assert(IS_QUERY_DISPATCHER());
+	if (!*shmDtmStarted)
+	{
+		/*
+		 * It's time to start required background workers so as to transtion
+		 * to dispatch mode and start exectuing distributed queries.
+		 */
+		int i;
+		uint32 seconds = PG_GETARG_UINT32(0);
+		for (i = 0; i < MaxPMAuxProc; i++)
+		{
+			if (PMAuxProcList[i].bgw_start_time == BgWorkerStart_DtxRecovering)
+				/* The following interface signals postmaster */
+				if (!RegisterDynamicBackgroundWorker(&PMAuxProcList[i], NULL))
+					elog(ERROR, "worker registration failed for %s",
+						 PMAuxProcList[i].bgw_name);
+		}
+
+		/* Wait until *shmDtmStarted */
+		while (--seconds && !*shmDtmStarted)
+			pg_usleep(1000 * 1000);
+	}
+	PG_RETURN_BOOL(*shmDtmStarted);
 }

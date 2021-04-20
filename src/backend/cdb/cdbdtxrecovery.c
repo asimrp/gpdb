@@ -154,8 +154,6 @@ recoverTM(void)
 	*shmDtmStarted = true;
 	elog(LOG, "DTM Started");
 
-	SendPostmasterSignal(PMSIGNAL_DTM_RECOVERED);
-
 	/*
 	 * dtx recovery process won't exit, so signal postmaster to launch
 	 * bg workers that depend on dtx recovery.

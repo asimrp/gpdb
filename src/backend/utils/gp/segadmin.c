@@ -814,7 +814,7 @@ gp_request_fts_probe_scan(PG_FUNCTION_ARGS)
 	if (Gp_role != GP_ROLE_DISPATCH)
 	{
 		ereport(ERROR,
-				(errmsg("this function can only be called by master (without utility mode)")));
+				(errmsg("this function can only be called by coordinator in dispatch mode")));
 		PG_RETURN_BOOL(false);
 	}
 
