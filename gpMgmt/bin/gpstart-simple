@@ -40,7 +40,7 @@ do
 done
 
 # Wait until coordinator starts DTX recovery, FTS, etc. and
-# transitions to dispatch mode
-psql -d postgres -c "select transition_to_dispatch_mode()"
+# transitions to dispatch mode, timeout is 30 seconds.
+psql -d postgres -c "select transition_to_dispatch_mode(30)"
 
 echo "Greenplum cluster started"

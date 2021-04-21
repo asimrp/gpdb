@@ -8,6 +8,7 @@
 # import mainUtils FIRST to get python version check
 import sys
 from optparse import OptionGroup, SUPPRESS_HELP
+from contextlib import closing
 
 from gppylib.mainUtils import *
 
@@ -133,10 +134,6 @@ class GpStart:
                 self.check_standby()
             else:
                 logger.info("Skipping Standby activation status checking.")
-
-            logger.info("Shutting down coordinator")
-            self.shutdown_coordinator_only()
-            # TODO: check results of command.
 
         finally:
             # Reenable Ctrl-C
@@ -398,24 +395,24 @@ class GpStart:
 
     ######
     def _startCoordinator(self):
-        logger.info("Starting Coordinator instance in admin mode")
+        logger.info("Starting Coordinator")
 
-        cmd = gp.CoordinatorStart('coordinator in utility mode', self.coordinator_datadir,
+        cmd = gp.CoordinatorStart('coordinator startup', self.coordinator_datadir,
                              self.port, self.era,
                              wrapper=self.wrapper, wrapper_args=self.wrapper_args,
-                             specialMode=self.specialMode, timeout=self.timeout, utilityMode=True
+                             specialMode=self.specialMode, timeout=self.timeout
                              )
         cmd.run()
 
         if cmd.get_results().rc != 0:
-            logger.fatal("Failed to start Coordinator instance in admin mode")
+            logger.fatal("Failed to start Coordinator instance")
             cmd.validate()
 
         logger.info("Obtaining Greenplum Coordinator catalog information")
 
         logger.info("Obtaining Segment details from coordinator...")
         self.dburl = dbconn.DbURL(port=self.port, dbname='template1')
-        self.gparray = GpArray.initFromCatalog(self.dburl, utility=True)
+        self.gparray = GpArray.initFromCatalog(self.dburl)
 
         logger.info("Setting new coordinator era")
         e = GpEraFile(self.coordinator_datadir, logger=get_logger_if_verbose())
@@ -464,7 +461,7 @@ class GpStart:
             raise ExceptionNoStackTraceNeeded("Do not have enough valid segments to start the array.")
 
         failedToStart = segmentStartResult.getFailedSegmentObjs()
-        coordinator_result, message = self._start_final_coordinator()
+        coordinator_result, message = self._transition_coordinator()
         if not coordinator_result:
             return False
 
@@ -661,7 +658,7 @@ class GpStart:
         return True
 
     ######
-    def _start_final_coordinator(self):
+    def _transition_coordinator(self):
         """ Last item in the startup sequence is to start the coordinator.
 
             After starting the coordinator we connect to it.  This is done both as a check that the system is
@@ -673,17 +670,6 @@ class GpStart:
         restrict_txt = ""
         if self.restricted:
             restrict_txt = "in RESTRICTED mode"
-
-        logger.info("Starting Coordinator instance %s directory %s %s" % (
-        self.gparray.coordinator.hostname, self.coordinator_datadir, restrict_txt))
-
-        # attempt to start coordinator
-        gp.CoordinatorStart.local("Starting Coordinator instance",
-                             self.coordinator_datadir, self.port, self.era,
-                             wrapper=self.wrapper, wrapper_args=self.wrapper_args,
-                             specialMode=self.specialMode, restrictedMode=self.restricted, timeout=self.timeout,
-                             max_connections=self.max_connections
-                             )
 
         # check that coordinator is running now
         if not pg.DbStatus.local('coordinator instance', self.gparray.coordinator):
@@ -698,9 +684,11 @@ class GpStart:
         try:
             self.dburl.retries = 4
             self.dburl.timeout = 15
-            coordinatorconn = dbconn.connect(self.dburl)
-            coordinatorconn.close()
-
+            transitionTimeout = 60 # seconds to wait for coordinator to be dispatch capable
+            transitionSql = "select transition_to_dispatch_mode(%d)" % transitionTimeout
+            with closing(dbconn.connect(self.dburl, encoding='UTF8')) as conn:
+                if not dbconn.querySingleton(conn, transitionSql):
+                    logger.error("Coordinator did not transition to dispath mode in %d seconds" % transitionTimeout)
         except Exception as e:
             # MPP-14016.  While certain fts scenarios will trigger initial connection failures
             # we still need watch for PANIC events.
